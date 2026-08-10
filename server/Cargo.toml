@@ -19,7 +19,7 @@ tower-http = { version = "0.6", features = ["trace", "limit"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "chrono", "macros"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart", "gzip"] }
 zip = "2"
 aes-gcm = "0.10"
 rand = "0.8"
@@ -28,7 +28,7 @@ base64 = "0.22"
 # Device + Apple vrstvy (integrace v M1/M2). Zapnuté rovnou, ať CI staví celý strom.
 idevice = { workspace = true, features = [
     "tcp", "usbmuxd", "afc", "installation_proxy", "core_device",
-    "core_device_proxy", "rsd", "tunnel_tcp_stack",
+    "core_device_proxy", "rsd", "tunnel_tcp_stack", "pair",
 ] }
 icloud_auth.workspace = true
 omnisette.workspace = true

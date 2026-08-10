@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["server", "cli"]
+# Párování běží přímo v serveru (přes idevice/usbmuxd), samostatné CLI není potřeba.
+members = ["server"]
 
 [workspace.package]
 edition = "2021"
@@ -17,9 +18,18 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 plist = "1"
 
 # Zařízení (lockdown, AFC, installation_proxy, RemoteXPC tunel pro iOS 17+).
-# Verze fixovaná; features zapínáme per-crate.
+# Pozn.: bulk transfer přes software tunel (jktcp) na iOS 26 stalluje — stejné
+# v 0.1.65 i git main. Otevřený upstream problém (viz homesign-no-docker memory).
 idevice = "0.1.65"
 
 # Apple ID auth (GrandSlam/GSA + anisette). Developer Services API si píšeme sami.
 icloud_auth = { git = "https://github.com/SideStore/apple-private-apis", rev = "03beb1aa42991ccdad6214dee77e72282bef461f" }
 omnisette = { git = "https://github.com/SideStore/apple-private-apis", rev = "03beb1aa42991ccdad6214dee77e72282bef461f" }
+
+# Vendorovaná kopie s opravou upstream build bugu na macOS: `omnisette::aos_kit`
+# neseděl se signaturou traitu `AnisetteHeadersProvider` (Send bound + návratový
+# typ AnisetteError). Bez toho server nešel zkompilovat nativně na macOS. aos_kit
+# provider stejně nepoužíváme (jedeme remote anisette), ale kompiluje se.
+[patch."https://github.com/SideStore/apple-private-apis"]
+omnisette = { path = "third_party/apple-private-apis/omnisette" }
+icloud_auth = { path = "third_party/apple-private-apis/icloud-auth" }

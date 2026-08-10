@@ -13,7 +13,7 @@ use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
 
-use crate::models::Ipa;
+use crate::models::{Device, Ipa};
 use crate::state::AppState;
 
 pub struct SignedIpa {
@@ -22,7 +22,7 @@ pub struct SignedIpa {
     pub profile_expires: Option<DateTime<Utc>>,
 }
 
-pub async fn resign(st: &AppState, ipa: &Ipa) -> anyhow::Result<SignedIpa> {
+pub async fn resign(st: &AppState, ipa: &Ipa, device: &Device) -> anyhow::Result<SignedIpa> {
     let src = PathBuf::from(&ipa.path);
     let data = tokio::fs::read(&src).await?;
 
@@ -44,17 +44,38 @@ pub async fn resign(st: &AppState, ipa: &Ipa) -> anyhow::Result<SignedIpa> {
         });
     }
 
-    // Resign vyžaduje přihlášený účet a hotový devportal (M2).
+    // Máme už podepsaný build s platným profilem? → instaluj bez auth/provisioningu.
+    let cached = st.cfg.ipa_dir().join(format!("{}-signed.ipa", ipa.id));
+    if cached.exists() {
+        let cbytes = tokio::fs::read(&cached).await?;
+        let cb = cbytes.clone();
+        if let Ok(Some(profile)) =
+            tokio::task::spawn_blocking(move || extract_embedded_profile(&cb)).await?
+        {
+            let expires = parse_profile_expiration(&profile);
+            let still_valid = expires.map(|e| e > Utc::now()).unwrap_or(false);
+            if still_valid {
+                let meta = tokio::task::spawn_blocking(move || crate::ipa::parse_meta(&cbytes)).await?;
+                let bid = meta.map(|m| m.bundle_id).unwrap_or_else(|_| ipa.bundle_id.clone());
+                tracing::info!("reuse podepsaného buildu {} (bez auth)", ipa.name);
+                return Ok(SignedIpa {
+                    path: cached,
+                    signed_bundle_id: bid,
+                    profile_expires: expires,
+                });
+            }
+        }
+    }
+
+    // Resign vyžaduje přihlášený účet.
     if !st.apple.is_logged_in().await {
         anyhow::bail!(
             "IPA není podepsaná a Apple účet není přihlášený — buď nahraj už podepsané \
-             IPA (passthrough), nebo se přihlas a počkej na dokončení M2 (resign)"
+             IPA (passthrough), nebo se přihlas"
         );
     }
-    anyhow::bail!(
-        "resign (přepis bundle id + podpis) je M2 a čeká na dokončení devportal/codesign \
-         proti živému účtu"
-    )
+
+    crate::codesign::provision_and_sign(st, ipa, device).await
 }
 
 /// Vytáhne `Payload/*.app/embedded.mobileprovision` z IPA, pokud existuje.
@@ -78,6 +99,11 @@ fn extract_embedded_profile(data: &[u8]) -> anyhow::Result<Option<Vec<u8>>> {
     let mut buf = Vec::new();
     zip.by_name(&name)?.read_to_end(&mut buf)?;
     Ok(Some(buf))
+}
+
+/// Veřejný wrapper pro codesign modul.
+pub fn parse_profile_expiration_pub(profile: &[u8]) -> Option<DateTime<Utc>> {
+    parse_profile_expiration(profile)
 }
 
 /// Provisioning profil je CMS/PKCS7 obálka kolem XML plistu. Vytáhneme plist a

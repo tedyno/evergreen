@@ -1,0 +1,50 @@
+# XcodeGen projekt pro nativní macOS klienta. Generování: `xcodegen generate`.
+name: Evergreen
+options:
+  bundleIdPrefix: cz.homesign
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""              # necháno prázdné — appka se nenotarizuje
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"           # ad-hoc podpis, žádný účet potřeba
+    ENABLE_HARDENED_RUNTIME: NO
+    SWIFT_VERSION: "5.0"
+targets:
+  Evergreen:
+    type: application
+    platform: macOS
+    sources:
+      - Sources
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: Evergreen
+        LSMinimumSystemVersion: "14.0"
+        # Klient mluví HTTP na domácí server — povol nešifrované spojení.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        # App Sandbox vypnutý kvůli přímému HTTP na LAN + výběru souborů.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cz.homesign.mac
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        ENABLE_APP_SANDBOX: NO
+    postBuildScripts:
+      - name: "Embed homesign-server binary"
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          DEST="$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+          mkdir -p "$DEST"
+          SRC="$SRCROOT/../target/release/homesign-server"
+          if [ ! -f "$SRC" ]; then
+            echo "error: chybí $SRC — spusť 'cargo build --release -p homesign-server'"
+            exit 1
+          fi
+          cp -f "$SRC" "$DEST/homesign-server"
+          chmod +x "$DEST/homesign-server"

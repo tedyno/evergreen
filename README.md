@@ -1,4 +1,4 @@
-# homesign
+# 🌲 Evergreen
 
 Self-hosted sideloading pro iPad/iPhone bez závislosti na AltServeru. Docker server s webovým UI podepisuje a instaluje IPA po síti a **sám** obnovuje 7denní profily — refresh neiniciuje iOS appka (tam ho systém škrtí), ale server běžící 24/7.
 

@@ -11,7 +11,7 @@ const INDEX: &str = r####"<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>homesign</title>
+<title>Evergreen</title>
 <style>
   :root { --bg:#0f1115; --card:#181b22; --fg:#e6e8ec; --muted:#9aa4b2; --acc:#4f8cff; --err:#ff5c5c; --ok:#3ecf8e; --line:#262b35; }
   @media (prefers-color-scheme: light) { :root { --bg:#f5f6f8; --card:#fff; --fg:#1a1d23; --muted:#667085; --line:#e4e7ec; } }
@@ -48,7 +48,7 @@ const INDEX: &str = r####"<!doctype html>
 </head>
 <body>
 <header>
-  <h1>🏠 homesign</h1>
+  <h1>🌲 Evergreen</h1>
   <span class="pill" id="ver"></span>
   <span class="grow" style="flex:1"></span>
   <span class="pill" id="acct"></span>
@@ -158,7 +158,7 @@ async function loadJobs(){
   const j=await api('/api/jobs'); const el=$('#jobs');
   if(!j.length){ el.innerHTML='<div class="empty">Žádné úlohy</div>'; return; }
   el.innerHTML=j.map(x=>{
-    const b = x.status==='done'?'<span class="badge ok">done</span>':x.status==='error'?'<span class="badge err">error</span>:'<span class="badge">'+x.status+'</span>';
+    const b = x.status==='done'?'<span class="badge ok">done</span>':x.status==='error'?'<span class="badge err">error</span>':'<span class="badge">'+x.status+'</span>';
     return `<div class="row"><div class="grow"><div class="name">${esc(x.kind)} #${x.id} ${b}</div>
       <div class="sub">${esc(x.message||'')}</div>
       <div class="bar"><i style="width:${x.progress}%"></i></div></div></div>`;

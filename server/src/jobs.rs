@@ -27,12 +27,30 @@ pub async fn enqueue_install(st: &AppState, device_udid: &str, ipa_id: &str) -> 
 
 /// Spustí worker pro danou úlohu na pozadí (fire-and-forget tokio task).
 pub fn spawn_worker(st: AppState, job_id: i64) {
-    tokio::spawn(async move {
+    let st_reg = st.clone();
+    let task = tokio::spawn(async move {
         if let Err(e) = run_job(&st, job_id).await {
             tracing::error!("job {job_id} selhal: {e:?}");
             let _ = set_status(&st, job_id, "error", 0, Some(&e.to_string())).await;
         }
+        st.running_jobs.lock().await.remove(&job_id);
     });
+    // Zaregistruj abort handle, ať jde úloha zrušit z UI.
+    tokio::spawn(async move {
+        st_reg.running_jobs.lock().await.insert(job_id, task.abort_handle());
+    });
+}
+
+/// Zruší běžící úlohu (abort tokio tasku + označení v DB).
+pub async fn cancel(st: &AppState, job_id: i64) -> anyhow::Result<bool> {
+    let handle = st.running_jobs.lock().await.remove(&job_id);
+    if let Some(h) = handle {
+        h.abort();
+        set_status(st, job_id, "error", 0, Some("zrušeno uživatelem")).await?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }
 
 async fn run_job(st: &AppState, job_id: i64) -> anyhow::Result<()> {

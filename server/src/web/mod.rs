@@ -3,6 +3,7 @@
 mod api;
 mod ui;
 
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
 use tower_http::limit::RequestBodyLimitLayer;
@@ -17,6 +18,8 @@ pub fn router(state: AppState) -> Router {
         .route("/icon/:id", get(api::icon))
         // --- REST API ---
         .route("/api/status", get(api::status))
+        .route("/api/appids", get(api::account_appids))
+        .route("/api/debug/install-direct", post(api::debug_install_direct))
         // účet
         .route("/api/account", get(api::account_status))
         .route("/api/account/login", post(api::login))
@@ -25,7 +28,11 @@ pub fn router(state: AppState) -> Router {
         // zařízení
         .route("/api/devices", get(api::list_devices))
         .route("/api/devices/:udid", axum::routing::delete(api::delete_device))
-        // pairing upload (z CLI)
+        .route("/api/devices/:udid/address", post(api::set_device_address))
+        .route("/api/devices/:udid/detect-ip", post(api::detect_device_ip))
+        // párování iPadu přes USB přímo v serveru (bez CLI)
+        .route("/api/pair/usb", get(api::pair_usb_list).post(api::pair_usb))
+        // pairing upload (zpětná kompatibilita)
         .route("/api/pair", post(api::upload_pairing))
         // IPA katalog
         .route("/api/ipa", get(api::list_ipa).post(api::upload_ipa))
@@ -35,6 +42,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/installations", get(api::list_installations))
         // úlohy
         .route("/api/jobs", get(api::list_jobs))
+        .route("/api/jobs/:id/cancel", post(api::cancel_job))
+        // axum má vlastní DefaultBodyLimit (2 MB) na extraktorech — bez tohohle
+        // multipart upload IPA spadne na reset/400. Tvrdý strop drží vrstva níž.
+        .layer(DefaultBodyLimit::disable())
         .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024 * 1024)) // 2 GB IPA
         .layer(TraceLayer::new_for_http())
         .with_state(state)

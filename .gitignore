@@ -8,3 +8,11 @@ pairing*.plist
 data/
 *.xcuserdata
 DerivedData/
+
+# Mac app build artefakty (DerivedData) a generovaný Xcode projekt
+macapp/build/
+build/
+*.xcodeproj/
+# Podpisové tajnosti (kdyby se objevily mimo data/)
+signing/
+xcode_token

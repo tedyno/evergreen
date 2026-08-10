@@ -25,9 +25,9 @@ where
 
     // 1) Podepiš IPA pod naším App ID (přepíše bundle id, vloží profil, podepíše
     //    hlavní binárku i nested frameworky/extensions).
-    let signed = crate::signer::resign(st, ipa)
+    let signed = crate::signer::resign(st, ipa, device)
         .await
-        .map_err(|e| anyhow::anyhow!("podpis selhal: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("podpis selhal: {e:#}"))?;
 
     progress(45, "podepsáno, navazuji spojení se zařízením".into()).await;
 
@@ -36,12 +36,12 @@ where
     crate::device::install_signed(
         device,
         &signed.path,
-        move |pct| {
+        move |pct, msg| {
             let cb = dev_progress.clone();
             async move {
                 // Instalace mapujeme na 45–100 %.
                 let mapped = 45 + (pct * 55 / 100);
-                cb(mapped, format!("instalace {pct}%")).await;
+                cb(mapped, msg).await;
             }
         },
     )
