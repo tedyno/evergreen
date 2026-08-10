@@ -8,12 +8,12 @@ struct InstalledView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if state.installations.filter({ $0.isActive }).isEmpty {
-                    ContentUnavailableView("Zatím nic nenainstalováno",
+                    ContentUnavailableView(state.t("Zatím nic nenainstalováno", "Nothing installed yet"),
                                            systemImage: "checkmark.seal",
-                                           description: Text("Nainstaluj appku v sekci Aplikace — objeví se tu s expirací profilu."))
+                                           description: Text(state.t("Nainstaluj appku v sekci Aplikace — objeví se tu s expirací profilu.", "Install an app in the Apps section — it will appear here with its profile expiry.")))
                         .frame(maxWidth: .infinity, minHeight: 180)
                 } else {
-                    Text("Profily free účtu platí 7 dní. Evergreen je sám obnoví před vypršením; tady je můžeš přepodepsat i ručně.")
+                    Text(state.t("Profily free účtu platí 7 dní. Evergreen je sám obnoví před vypršením; tady je můžeš přepodepsat i ručně.", "Free-account profiles are valid for 7 days. Evergreen renews them automatically before they expire; here you can also re-sign them manually."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     ForEach(state.installations.filter { $0.isActive }) { inst in
@@ -24,7 +24,7 @@ struct InstalledView: View {
             }
             .padding(20)
         }
-        .navigationTitle("Nainstalované")
+        .navigationTitle(state.t("Nainstalované", "Installed"))
         .task { await state.refreshInstallations() }
     }
 }
@@ -53,7 +53,7 @@ struct InstalledRow: View {
                 HStack(spacing: 6) {
                     Text(deviceName)
                     if let d = inst.lastInstalledDate {
-                        Text("· podepsáno \(dateStr(d))")
+                        Text(state.t("· podepsáno \(dateStr(d))", "· signed \(dateStr(d))"))
                     }
                 }
                 .font(.caption)
@@ -86,9 +86,9 @@ struct InstalledRow: View {
             HStack(spacing: 6) {
                 Image(systemName: "clock")
                 if days <= 0 {
-                    Text("Profil vypršel").foregroundStyle(.red)
+                    Text(state.t("Profil vypršel", "Profile expired")).foregroundStyle(.red)
                 } else {
-                    Text("Vyprší \(dateStr(exp)) · za \(days) \(days == 1 ? "den" : (days < 5 ? "dny" : "dní"))")
+                    Text(state.t("Vyprší \(dateStr(exp)) · za \(days) \(days == 1 ? "den" : (days < 5 ? "dny" : "dní"))", "Expires \(dateStr(exp)) · in \(days) \(days == 1 ? "day" : "days")"))
                         .foregroundStyle(color)
                 }
             }

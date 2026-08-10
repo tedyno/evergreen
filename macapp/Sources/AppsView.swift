@@ -19,18 +19,18 @@ struct AppsView: View {
 
                 if let p = state.uploadProgress {
                     ProgressView(value: p) {
-                        Text("Nahrávám… \(Int(p * 100)) %")
+                        Text(state.t("Nahrávám… \(Int(p * 100)) %", "Uploading… \(Int(p * 100)) %"))
                             .font(.caption)
                     }
                 }
 
-                Text("Katalog")
+                Text(state.t("Katalog", "Catalog"))
                     .font(.headline)
 
                 if state.ipas.isEmpty {
-                    ContentUnavailableView("Zatím žádné IPA",
+                    ContentUnavailableView(state.t("Zatím žádné IPA", "No IPAs yet"),
                                            systemImage: "shippingbox",
-                                           description: Text("Přetáhni sem .ipa soubor nebo klikni na plochu výše."))
+                                           description: Text(state.t("Přetáhni sem .ipa soubor nebo klikni na plochu výše.", "Drag an .ipa file here or click the area above.")))
                         .frame(maxWidth: .infinity, minHeight: 160)
                 } else {
                     ForEach(state.ipas) { ipa in
@@ -41,8 +41,8 @@ struct AppsView: View {
             }
             .padding(20)
         }
-        .navigationTitle("Aplikace")
-        .alert("Chyba", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+        .navigationTitle(state.t("Aplikace", "Apps"))
+        .alert(state.t("Chyba", "Error"), isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
@@ -57,7 +57,7 @@ struct AppsView: View {
                 Image(systemName: "arrow.down.doc")
                     .font(.system(size: 28))
                     .foregroundStyle(.secondary)
-                Text("Přetáhni sem .ipa nebo klikni pro výběr")
+                Text(state.t("Přetáhni sem .ipa nebo klikni pro výběr", "Drag an .ipa here or click to select"))
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, minHeight: 120)
@@ -112,7 +112,7 @@ struct FreeAccountCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Label("App ID na účtu", systemImage: "person.badge.key")
+                Label(state.t("App ID na účtu", "App IDs on account"), systemImage: "person.badge.key")
                     .font(.headline)
                 Spacer()
                 if state.appIdLoading && state.appIdInfo == nil {
@@ -132,7 +132,7 @@ struct FreeAccountCard: View {
                             .frame(height: 7)
                     }
                 }
-                Text("Skutečný stav účtu (i App ID z AltStoru/Xcode). Free limit: 10 App ID / 7 dní, 3 aktivní appky na zařízení, profil 7 dní. Team \(info.teamId).")
+                Text(state.t("Skutečný stav účtu (i App ID z AltStoru/Xcode). Free limit: 10 App ID / 7 dní, 3 aktivní appky na zařízení, profil 7 dní. Team \(info.teamId).", "Actual account state (including App IDs from AltStore/Xcode). Free limit: 10 App IDs / 7 days, 3 active apps per device, 7-day profile. Team \(info.teamId)."))
                     .font(.caption2).foregroundStyle(.secondary)
 
                 if !info.appIds.isEmpty {
@@ -145,9 +145,9 @@ struct FreeAccountCard: View {
                     }
                 }
             } else if !state.appIdLoading {
-                Text("Stav App ID se nepodařilo načíst.")
+                Text(state.t("Stav App ID se nepodařilo načíst.", "Could not load App ID state."))
                     .font(.caption).foregroundStyle(.secondary)
-                Button("Zkusit znovu") { Task { await state.refreshAppIds(force: true) } }
+                Button(state.t("Zkusit znovu", "Try again")) { Task { await state.refreshAppIds(force: true) } }
                     .controlSize(.small)
             }
         }
@@ -201,7 +201,7 @@ struct IpaRow: View {
             .frame(maxWidth: 180)
             .disabled(state.devices.isEmpty)
 
-            Button("Instalovat") {
+            Button(state.t("Instalovat", "Install")) {
                 install()
             }
             .disabled(state.devices.isEmpty || selectedDevice.isEmpty)
@@ -217,7 +217,7 @@ struct IpaRow: View {
         .onAppear {
             if selectedDevice.isEmpty { selectedDevice = state.devices.first?.udid ?? "" }
         }
-        .alert("Instalace selhala", isPresented: Binding(get: { installError != nil }, set: { if !$0 { installError = nil } })) {
+        .alert(state.t("Instalace selhala", "Installation failed"), isPresented: Binding(get: { installError != nil }, set: { if !$0 { installError = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(installError ?? "")

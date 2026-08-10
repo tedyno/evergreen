@@ -18,6 +18,18 @@ enum Section: String, CaseIterable, Identifiable {
         case .account: return "person.crop.circle"
         }
     }
+
+    /// Localized title for display in the sidebar.
+    @MainActor
+    func title(_ s: AppState) -> String {
+        switch self {
+        case .apps: return s.t("Aplikace", "Apps")
+        case .installed: return s.t("Nainstalované", "Installed")
+        case .devices: return s.t("Zařízení", "Devices")
+        case .jobs: return s.t("Úlohy", "Jobs")
+        case .account: return s.t("Účet", "Account")
+        }
+    }
 }
 
 struct ContentView: View {
@@ -28,7 +40,7 @@ struct ContentView: View {
         NavigationSplitView {
             List(Section.allCases, selection: $selection) { section in
                 HStack {
-                    Label(section.rawValue, systemImage: section.icon)
+                    Label(section.title(state), systemImage: section.icon)
                     if section == .jobs && state.hasActiveJob {
                         Spacer()
                         ProgressView().controlSize(.small)
@@ -57,7 +69,7 @@ struct ContentView: View {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .help("Obnovit")
+                .help(state.t("Obnovit", "Refresh"))
             }
         }
     }
@@ -74,10 +86,10 @@ struct ConnectionStatusBar: View {
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
                 if let s = state.status {
-                    Text("Připojeno · v\(s.version)")
+                    Text(state.t("Připojeno · v\(s.version)", "Connected · v\(s.version)"))
                         .font(.caption)
                 } else {
-                    Text("Nepřipojeno")
+                    Text(state.t("Nepřipojeno", "Not connected"))
                         .font(.caption)
                 }
                 Text(state.baseURL.absoluteString)

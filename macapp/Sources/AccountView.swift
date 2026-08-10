@@ -12,7 +12,7 @@ struct AccountView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Apple ID")
+                Text(state.t("Apple ID", "Apple ID"))
                     .font(.headline)
 
                 content
@@ -20,8 +20,8 @@ struct AccountView: View {
             .frame(maxWidth: 420, alignment: .leading)
             .padding(20)
         }
-        .navigationTitle("Účet")
-        .alert("Chyba", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+        .navigationTitle(state.t("Účet", "Account"))
+        .alert(state.t("Chyba", "Error"), isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
@@ -43,14 +43,14 @@ struct AccountView: View {
     private func loggedIn(_ acc: Account?) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Label {
-                Text("Přihlášeno jako ") + Text(acc?.appleId ?? "").bold()
+                Text(state.t("Přihlášeno jako ", "Signed in as ")) + Text(acc?.appleId ?? "").bold()
             } icon: {
                 Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
             }
             if let team = acc?.teamId {
-                Text("Tým: \(team)").font(.caption).foregroundStyle(.secondary)
+                Text(state.t("Tým: \(team)", "Team: \(team)")).font(.caption).foregroundStyle(.secondary)
             }
-            Button("Odhlásit", role: .destructive) {
+            Button(state.t("Odhlásit", "Sign out"), role: .destructive) {
                 Task { await state.logout() }
             }
         }
@@ -58,12 +58,12 @@ struct AccountView: View {
 
     private var twoFactor: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Zadej 2FA kód z důvěryhodného zařízení:")
+            Text(state.t("Zadej 2FA kód z důvěryhodného zařízení:", "Enter the 2FA code from a trusted device:"))
                 .foregroundStyle(.secondary)
             TextField("123456", text: $code)
                 .textFieldStyle(.roundedBorder)
                 .frame(maxWidth: 160)
-            Button("Ověřit") { verify() }
+            Button(state.t("Ověřit", "Verify")) { verify() }
                 .disabled(busy || code.isEmpty)
         }
     }
@@ -72,11 +72,11 @@ struct AccountView: View {
         VStack(alignment: .leading, spacing: 10) {
             TextField("mail@icloud.com", text: $appleId)
                 .textFieldStyle(.roundedBorder)
-            SecureField("Heslo", text: $password)
+            SecureField(state.t("Heslo", "Password"), text: $password)
                 .textFieldStyle(.roundedBorder)
-            Button("Přihlásit") { login() }
+            Button(state.t("Přihlásit", "Sign in")) { login() }
                 .disabled(busy || appleId.isEmpty || password.isEmpty)
-            Text("Heslo se ukládá na serveru šifrovaně (AES-256-GCM) a slouží jen k podpisu.")
+            Text(state.t("Heslo se ukládá na serveru šifrovaně (AES-256-GCM) a slouží jen k podpisu.", "The password is stored encrypted on the server (AES-256-GCM) and is used only for signing."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -117,16 +117,22 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Vzhled")
+            Text(state.t("Vzhled", "Appearance"))
                 .font(.headline)
-            Toggle("Zobrazit ikonu v horní liště (menu bar)", isOn: $showMenuBarIcon)
+            Picker(state.t("Jazyk", "Language"), selection: $state.appLanguage) {
+                Text(state.t("Systém", "System")).tag("system")
+                Text("Čeština").tag("cs")
+                Text("English").tag("en")
+            }
+            .frame(maxWidth: 280)
+            Toggle(state.t("Zobrazit ikonu v horní liště (menu bar)", "Show the icon in the menu bar"), isOn: $showMenuBarIcon)
 
             Divider()
 
-            Text("Server")
+            Text(state.t("Server", "Server"))
                 .font(.headline)
 
-            Toggle("Spouštět vlastní server v této appce", isOn: Binding(
+            Toggle(state.t("Spouštět vlastní server v této appce", "Run a built-in server in this app"), isOn: Binding(
                 get: { state.useLocalServer },
                 set: { newValue in
                     Task {
@@ -147,17 +153,17 @@ struct SettingsView: View {
                     serverStateIndicator
                     Text(serverStateText).font(.caption).foregroundStyle(.secondary)
                 }
-                Text("Server běží jako podproces na 127.0.0.1:\(server.port), data v Application Support. Anisette jede nativně (AOSKit), žádný Docker.")
+                Text(state.t("Server běží jako podproces na 127.0.0.1:\(server.port), data v Application Support. Anisette jede nativně (AOSKit), žádný Docker.", "The server runs as a subprocess on 127.0.0.1:\(server.port), data in Application Support. Anisette runs natively (AOSKit), no Docker."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                TextField("Adresa vzdáleného serveru", text: $draft)
+                TextField(state.t("Adresa vzdáleného serveru", "Remote server address"), text: $draft)
                     .textFieldStyle(.roundedBorder)
                     .frame(minWidth: 260)
-                Text("Např. http://10.0.1.3:8080 — server běžící jinde (NAS/RPi).")
+                Text(state.t("Např. http://10.0.1.3:8080 — server běžící jinde (NAS/RPi).", "E.g. http://10.0.1.3:8080 — a server running elsewhere (NAS/RPi)."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Button("Uložit a připojit") {
+                Button(state.t("Uložit a připojit", "Save and connect")) {
                     Task {
                         state.remoteServerURLString = draft
                         await state.switchToRemote()
@@ -185,10 +191,10 @@ struct SettingsView: View {
 
     private var serverStateText: String {
         switch server.state {
-        case .running: return "Server běží"
-        case .starting: return "Spouští se…"
-        case .stopped: return "Zastaven"
-        case .failed(let msg): return "Chyba: \(msg)"
+        case .running: return state.t("Server běží", "Server running")
+        case .starting: return state.t("Spouští se…", "Starting…")
+        case .stopped: return state.t("Zastaven", "Stopped")
+        case .failed(let msg): return state.t("Chyba: \(msg)", "Error: \(msg)")
         }
     }
 }

@@ -6,13 +6,13 @@ struct JobsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Historie resignů a instalací — ruční i automatické (obnova před vypršením profilu). Vidíš čas, stav a případnou chybu.")
+                Text(state.t("Historie resignů a instalací — ruční i automatické (obnova před vypršením profilu). Vidíš čas, stav a případnou chybu.", "Resign and install history — manual and automatic (renewal before the profile expires). You can see the time, status, and any error."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if state.jobs.isEmpty {
-                    ContentUnavailableView("Žádné úlohy",
+                    ContentUnavailableView(state.t("Žádné úlohy", "No jobs"),
                                            systemImage: "list.bullet.rectangle",
-                                           description: Text("Instalace a obnovy se objeví tady."))
+                                           description: Text(state.t("Instalace a obnovy se objeví tady.", "Installs and renewals will appear here.")))
                         .frame(maxWidth: .infinity, minHeight: 160)
                 } else {
                     ForEach(state.jobs) { job in
@@ -23,7 +23,7 @@ struct JobsView: View {
             }
             .padding(20)
         }
-        .navigationTitle("Úlohy")
+        .navigationTitle(state.t("Úlohy", "Jobs"))
     }
 }
 
@@ -42,7 +42,7 @@ struct JobRow: View {
                 statusBadge
                 Spacer()
                 if job.isActive {
-                    Button("Zrušit", role: .destructive) {
+                    Button(state.t("Zrušit", "Cancel"), role: .destructive) {
                         Task { await state.cancelJob(job.id) }
                     }
                     .buttonStyle(.borderless)
@@ -74,8 +74,8 @@ struct JobRow: View {
 
     private var jobKindLabel: String {
         switch job.kind {
-        case "install": return "Instalace"
-        case "refresh": return "Obnova"
+        case "install": return state.t("Instalace", "Install")
+        case "refresh": return state.t("Obnova", "Renewal")
         default: return job.kind
         }
     }
@@ -90,10 +90,10 @@ struct JobRow: View {
     private var statusBadge: some View {
         let (text, color): (String, Color) = {
             switch job.status {
-            case "done": return ("hotovo", .green)
-            case "error": return ("chyba", .red)
-            case "running": return ("běží", .blue)
-            case "queued": return ("ve frontě", .secondary)
+            case "done": return (state.t("hotovo", "done"), .green)
+            case "error": return (state.t("chyba", "error"), .red)
+            case "running": return (state.t("běží", "running"), .blue)
+            case "queued": return (state.t("ve frontě", "queued"), .secondary)
             default: return (job.status, .secondary)
             }
         }()

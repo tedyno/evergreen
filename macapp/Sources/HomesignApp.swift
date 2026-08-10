@@ -69,18 +69,18 @@ struct MenuBarContent: View {
 
     var body: some View {
         if let s = state.status {
-            Text("Připojeno · v\(s.version)")
+            Text(state.t("Připojeno · v\(s.version)", "Connected · v\(s.version)"))
         } else {
-            Text("Nepřipojeno")
+            Text(state.t("Nepřipojeno", "Not connected"))
         }
         if state.hasActiveJob {
-            Text("Probíhá úloha…")
+            Text(state.t("Probíhá úloha…", "A job is running…"))
         }
         Divider()
-        Button("Otevřít Evergreen") {
+        Button(state.t("Otevřít Evergreen", "Open Evergreen")) {
             NSApp.activate(ignoringOtherApps: true)
         }
-        Button("Ukončit") {
+        Button(state.t("Ukončit", "Quit")) {
             NSApplication.shared.terminate(nil)
         }
     }

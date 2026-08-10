@@ -4,6 +4,22 @@ import SwiftUI
 /// Shared app state: server configuration, loaded data, job polling.
 @MainActor
 final class AppState: ObservableObject {
+    /// UI language: "system" | "cs" | "en". Switches instantly (views observe AppState).
+    @Published var appLanguage: String = UserDefaults.standard.string(forKey: "appLanguage") ?? "system" {
+        didSet { UserDefaults.standard.set(appLanguage, forKey: "appLanguage") }
+    }
+
+    /// Picks the string for the current UI language.
+    func t(_ cs: String, _ en: String) -> String {
+        let lang: String
+        if appLanguage == "cs" || appLanguage == "en" {
+            lang = appLanguage
+        } else {
+            lang = (Locale.preferredLanguages.first ?? "en").hasPrefix("cs") ? "cs" : "en"
+        }
+        return lang == "cs" ? cs : en
+    }
+
     /// Use the embedded server (default), or connect to a remote one?
     @AppStorage("useLocalServer") var useLocalServer: Bool = true
     /// Address of the remote server (only when useLocalServer == false).

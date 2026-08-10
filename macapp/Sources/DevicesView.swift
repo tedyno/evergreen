@@ -9,20 +9,20 @@ struct DevicesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
-                    Text("Spárovaná zařízení").font(.headline)
+                    Text(state.t("Spárovaná zařízení", "Paired devices")).font(.headline)
                     Spacer()
                     Button {
                         pair.reset()
                         showPairSheet = true
                     } label: {
-                        Label("Spárovat iPad", systemImage: "cable.connector")
+                        Label(state.t("Spárovat iPad", "Pair iPad"), systemImage: "cable.connector")
                     }
                 }
 
                 if state.devices.isEmpty {
-                    ContentUnavailableView("Žádná zařízení",
+                    ContentUnavailableView(state.t("Žádná zařízení", "No devices"),
                                            systemImage: "ipad.and.iphone.slash",
-                                           description: Text("Připoj iPad USB kabelem a klikni na „Spárovat iPad“."))
+                                           description: Text(state.t("Připoj iPad USB kabelem a klikni na „Spárovat iPad“.", "Connect an iPad via USB cable and click “Pair iPad”.")))
                         .frame(maxWidth: .infinity, minHeight: 160)
                 } else {
                     ForEach(state.devices) { device in
@@ -33,7 +33,7 @@ struct DevicesView: View {
             }
             .padding(20)
         }
-        .navigationTitle("Zařízení")
+        .navigationTitle(state.t("Zařízení", "Devices"))
         .sheet(isPresented: $showPairSheet) {
             PairSheet()
                 .environmentObject(state)
@@ -53,13 +53,13 @@ struct PairSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Spárovat iPad přes USB")
+            Text(state.t("Spárovat iPad přes USB", "Pair iPad over USB"))
                 .font(.headline)
 
             VStack(alignment: .leading, spacing: 6) {
-                Label("Připoj iPad USB kabelem a odemkni ho.", systemImage: "1.circle")
-                Label("Klikni na Spárovat — na iPadu potvrď „Trust / Důvěřovat“ a zadej kód.", systemImage: "2.circle")
-                Label("IP adresu iPadu zjistí homesign sám.", systemImage: "wifi")
+                Label(state.t("Připoj iPad USB kabelem a odemkni ho.", "Connect the iPad via USB cable and unlock it."), systemImage: "1.circle")
+                Label(state.t("Klikni na Spárovat — na iPadu potvrď „Trust / Důvěřovat“ a zadej kód.", "Click Pair — on the iPad confirm “Trust” and enter the passcode."), systemImage: "2.circle")
+                Label(state.t("IP adresu iPadu zjistí homesign sám.", "homesign detects the iPad’s IP address by itself."), systemImage: "wifi")
             }
             .font(.callout)
             .foregroundStyle(.secondary)
@@ -68,7 +68,7 @@ struct PairSheet: View {
 
             HStack {
                 Spacer()
-                Button("Zavřít") {
+                Button(state.t("Zavřít", "Close")) {
                     Task { await state.refreshDevices() }
                     dismiss()
                 }
@@ -81,7 +81,7 @@ struct PairSheet: View {
                     if pair.phase == .running {
                         ProgressView().controlSize(.small)
                     } else {
-                        Text("Spárovat")
+                        Text(state.t("Spárovat", "Pair"))
                     }
                 }
                 .keyboardShortcut(.defaultAction)
@@ -98,27 +98,27 @@ struct PairSheet: View {
         case .idle:
             EmptyView()
         case .running:
-            Label("Páruji… potvrď „Trust“ na iPadu.", systemImage: "hourglass")
+            Label(state.t("Páruji… potvrď „Trust“ na iPadu.", "Pairing… confirm “Trust” on the iPad."), systemImage: "hourglass")
                 .foregroundStyle(.secondary)
         case .success(let udid, let name, let addr):
             VStack(alignment: .leading, spacing: 8) {
-                Label("Spárováno: \(name)", systemImage: "checkmark.circle.fill")
+                Label(state.t("Spárováno: \(name)", "Paired: \(name)"), systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
                 if let addr {
-                    Text("IP zjištěna automaticky: \(addr)")
+                    Text(state.t("IP zjištěna automaticky: \(addr)", "IP detected automatically: \(addr)"))
                         .font(.caption).foregroundStyle(.secondary)
                 } else if manualSaved {
-                    Text("IP uložena ručně.")
+                    Text(state.t("IP uložena ručně.", "IP saved manually."))
                         .font(.caption).foregroundStyle(.secondary)
                 } else {
                     // Fallback only when auto-detection fails.
-                    Text("IP se nepodařilo zjistit automaticky (iPad možná ještě není na Wi-Fi). Můžeš ji zadat ručně:")
+                    Text(state.t("IP se nepodařilo zjistit automaticky (iPad možná ještě není na Wi-Fi). Můžeš ji zadat ručně:", "IP could not be detected automatically (the iPad may not be on Wi-Fi yet). You can enter it manually:"))
                         .font(.caption).foregroundStyle(.orange)
                     HStack {
-                        TextField("např. 10.0.1.7", text: $manualIP)
+                        TextField(state.t("např. 10.0.1.7", "e.g. 10.0.1.7"), text: $manualIP)
                             .textFieldStyle(.roundedBorder)
                             .frame(maxWidth: 180)
-                        Button("Uložit IP") {
+                        Button(state.t("Uložit IP", "Save IP")) {
                             Task {
                                 try? await state.setDeviceAddress(udid: udid, address: manualIP)
                                 manualSaved = true
@@ -152,7 +152,7 @@ struct DeviceRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(device.name).fontWeight(.medium)
                 HStack(spacing: 6) {
-                    Text(device.address ?? "IP neznámá")
+                    Text(device.address ?? state.t("IP neznámá", "IP unknown"))
                         .foregroundStyle(device.address == nil ? .orange : .secondary)
                     Text("·")
                     Text("iOS \(device.iosVersion ?? "?")")
@@ -174,7 +174,7 @@ struct DeviceRow: View {
                     }
                 } label: {
                     if detecting { ProgressView().controlSize(.small) }
-                    else { Text("Zjistit IP") }
+                    else { Text(state.t("Zjistit IP", "Detect IP")) }
                 }
                 .disabled(detecting)
             }
@@ -182,15 +182,15 @@ struct DeviceRow: View {
             Button(role: .destructive) {
                 confirmDelete = true
             } label: {
-                Text("Odebrat")
+                Text(state.t("Odebrat", "Remove"))
             }
         }
         .padding(.vertical, 4)
-        .confirmationDialog("Odebrat zařízení \(device.name)?", isPresented: $confirmDelete) {
-            Button("Odebrat", role: .destructive) {
+        .confirmationDialog(state.t("Odebrat zařízení \(device.name)?", "Remove device \(device.name)?"), isPresented: $confirmDelete) {
+            Button(state.t("Odebrat", "Remove"), role: .destructive) {
                 Task { await state.deleteDevice(device) }
             }
-            Button("Zrušit", role: .cancel) {}
+            Button(state.t("Zrušit", "Cancel"), role: .cancel) {}
         }
     }
 }
