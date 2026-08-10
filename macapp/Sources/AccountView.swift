@@ -112,10 +112,17 @@ struct AccountView: View {
 struct SettingsView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var server: ServerController
+    @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
     @State private var draft = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
+            Text("Vzhled")
+                .font(.headline)
+            Toggle("Zobrazit ikonu v horní liště (menu bar)", isOn: $showMenuBarIcon)
+
+            Divider()
+
             Text("Server")
                 .font(.headline)
 
