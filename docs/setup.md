@@ -85,3 +85,9 @@ V appce nastav adresu serveru; uvidíš katalog, stav instalací a expirace.
 - **Developer Services** klient (registrace zařízení, cert, profil) je rozepsaný
   v `apple/devportal.rs` a je hlavním zbývajícím kusem M2.
 - Free účet: max 3 appky (1 = store), profily 7 dní, 10 App ID/týden.
+- **Refresh vs. passthrough:** skutečné prodloužení 7denní expirace vyžaduje při
+  každé obnově *čerstvý* profil, tj. resign (M2). U passthrough už podepsaných IPA
+  scheduler přeinstaluje tentýž bundle, ale expiraci free-účtu neprodlouží —
+  passthrough dává smysl hlavně pro IPA z placeného účtu (roční profil), kde
+  refresh stejně není potřeba. Automatická obnova free profilů se plně rozjede
+  s dokončením M2.
