@@ -1,0 +1,10 @@
+[package]
+name = "homesign-server"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# M1: idevice (RemoteXPC tunel, AFC, installation_proxy)
+# M2: apple-private-apis (GrandSlam auth, Developer Services), signer
+# M3: axum, tokio, sqlx (SQLite)

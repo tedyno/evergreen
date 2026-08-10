@@ -1,0 +1,10 @@
+target/
+*.ipa
+*.mobileprovision
+*.p12
+pairing*.plist
+.DS_Store
+.env
+data/
+*.xcuserdata
+DerivedData/

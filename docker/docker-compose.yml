@@ -1,0 +1,19 @@
+# Skeleton — server image přijde v M6, omnisette sidecar lze použít už teď.
+services:
+  homesign:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../data:/data
+    environment:
+      ANISETTE_URL: http://anisette:6969
+    depends_on:
+      - anisette
+
+  anisette:
+    image: ghcr.io/sidestore/omnisette-server:latest
+    ports:
+      - "6969:6969"
