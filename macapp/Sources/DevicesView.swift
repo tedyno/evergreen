@@ -59,7 +59,8 @@ struct PairSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 Label(state.t("Připoj iPad USB kabelem a odemkni ho.", "Connect the iPad via USB cable and unlock it."), systemImage: "1.circle")
                 Label(state.t("Klikni na Spárovat — na iPadu potvrď „Trust / Důvěřovat“ a zadej kód.", "Click Pair — on the iPad confirm “Trust” and enter the passcode."), systemImage: "2.circle")
-                Label(state.t("IP adresu iPadu zjistí homesign sám.", "homesign detects the iPad’s IP address by itself."), systemImage: "wifi")
+                Label(state.t("IP adresu iPadu zjistí Evergreen sám.", "Evergreen detects the iPad’s IP address by itself."), systemImage: "wifi")
+                Label(state.t("Pro bezdrátovou instalaci potvrď „Trust“ i podruhé (RemotePairing).", "For wireless install, confirm “Trust” a second time too (RemotePairing)."), systemImage: "antenna.radiowaves.left.and.right")
             }
             .font(.callout)
             .foregroundStyle(.secondary)
@@ -100,10 +101,17 @@ struct PairSheet: View {
         case .running:
             Label(state.t("Páruji… potvrď „Trust“ na iPadu.", "Pairing… confirm “Trust” on the iPad."), systemImage: "hourglass")
                 .foregroundStyle(.secondary)
-        case .success(let udid, let name, let addr):
+        case .success(let udid, let name, let addr, let wireless):
             VStack(alignment: .leading, spacing: 8) {
                 Label(state.t("Spárováno: \(name)", "Paired: \(name)"), systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
+                if wireless {
+                    Label(state.t("Bezdrátová instalace připravena (RemotePairing).", "Wireless install ready (RemotePairing)."), systemImage: "wifi")
+                        .font(.caption).foregroundStyle(.green)
+                } else {
+                    Label(state.t("Bezdrátovou instalaci se nepodařilo povolit — funguje instalace přes USB.", "Wireless install couldn’t be enabled — USB install works."), systemImage: "wifi.slash")
+                        .font(.caption).foregroundStyle(.orange)
+                }
                 if let addr {
                     Text(state.t("IP zjištěna automaticky: \(addr)", "IP detected automatically: \(addr)"))
                         .font(.caption).foregroundStyle(.secondary)

@@ -5,13 +5,22 @@
 //! iPad's IP in the ARP table by its Wi-Fi MAC, so the user doesn't have to enter it manually.
 
 use std::net::IpAddr;
+use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
+use idevice::core_device_proxy::CoreDeviceProxy;
 use idevice::lockdown::LockdownClient;
+use idevice::remote_pairing::{RemotePairingClient, RpPairingFile};
+use idevice::rsd::RsdHandshake;
 use idevice::usbmuxd::{Connection, UsbmuxdAddr, UsbmuxdConnection};
-use idevice::IdeviceService;
+use idevice::{IdeviceService, RemoteXpcClient};
+
+/// The host name we identify ourselves with in RemotePairing records.
+const RP_HOST: &str = "homesign";
+/// iOS 17+ RSD service that brokers the untrusted RemotePairing tunnel.
+const TUNNEL_SERVICE: &str = "com.apple.internal.dt.coredevice.untrusted.tunnelservice";
 
 /// Pairing result for the API.
 #[derive(Debug, serde::Serialize)]
@@ -21,6 +30,9 @@ pub struct PairResult {
     pub ios_version: Option<String>,
     pub address: Option<String>,
     pub wifi_mac: Option<String>,
+    /// Whether we also created a RemotePairing record, which is required for
+    /// wireless (Wi-Fi) installs on iOS 17+.
+    pub wireless_ready: bool,
 }
 
 async fn usbmuxd() -> Result<UsbmuxdConnection> {
@@ -103,9 +115,80 @@ pub async fn pair_usb(udid: Option<&str>) -> Result<(PairResult, Vec<u8>)> {
             ios_version: version,
             address,
             wifi_mac,
+            wireless_ready: false,
         },
         serialized,
     ))
+}
+
+/// Creates and persists a RemotePairing record over USB. This is a second,
+/// separate pairing (Ed25519) that iOS 17+ requires to open the RemoteXPC
+/// tunnel over Wi-Fi — the classic lockdown pairing alone is not enough.
+///
+/// Mirrors idevice's `rppairing pair` USB flow: CoreDeviceProxy → software
+/// tunnel → RSD → untrusted tunnel service → RemoteXPC → RemotePairing. The
+/// user may have to tap "Trust" once more on the device.
+pub async fn create_rp_pairing(udid: &str, out_path: &Path) -> Result<()> {
+    let mut u = usbmuxd().await?;
+    let dev = u
+        .get_device(udid)
+        .await
+        .map_err(|e| anyhow!("zařízení {udid}: {e:?}"))?;
+    if dev.connection_type != Connection::Usb {
+        return Err(anyhow!("RemotePairing vyžaduje USB připojení"));
+    }
+    let provider = dev.to_provider(UsbmuxdAddr::default(), "homesign-rp");
+
+    let proxy = CoreDeviceProxy::connect(&provider)
+        .await
+        .map_err(|e| anyhow!("CoreDeviceProxy: {e:?}"))?;
+    let rsd_port = proxy.tunnel_info().server_rsd_port;
+    let adapter = proxy
+        .create_software_tunnel()
+        .map_err(|e| anyhow!("software tunnel: {e:?}"))?;
+    let mut adapter = adapter.to_async_handle();
+
+    let rsd_stream = adapter
+        .connect(rsd_port)
+        .await
+        .map_err(|e| anyhow!("RSD connect: {e:?}"))?;
+    let handshake = RsdHandshake::new(rsd_stream)
+        .await
+        .map_err(|e| anyhow!("RSD handshake: {e:?}"))?;
+    let ts = handshake
+        .services
+        .get(TUNNEL_SERVICE)
+        .ok_or_else(|| anyhow!("tunnel service nenalezen v RSD"))?;
+    let ts_stream = adapter
+        .connect(ts.port)
+        .await
+        .map_err(|e| anyhow!("tunnel service connect: {e:?}"))?;
+    let mut conn = RemoteXpcClient::new(ts_stream)
+        .await
+        .map_err(|e| anyhow!("RemoteXPC init: {e:?}"))?;
+    conn.do_handshake()
+        .await
+        .map_err(|e| anyhow!("XPC handshake: {e:?}"))?;
+    let _ = conn.recv_root().await;
+
+    let mut rpf = RpPairingFile::generate(RP_HOST);
+    let mut rpc = RemotePairingClient::new(conn, RP_HOST);
+    rpc.connect(&mut rpf, || async { "000000".to_string() })
+        .await
+        .map_err(|e| anyhow!("RemotePairing selhalo (potvrď Trust na iPadu): {e:?}"))?;
+
+    rpf.write_to_file(out_path)
+        .await
+        .map_err(|e| anyhow!("uložení RP pairing filu: {e:?}"))?;
+    Ok(())
+}
+
+/// Path of the RemotePairing record that sits next to the classic pairing file.
+pub fn rp_pairing_path(pairing_path: &str) -> std::path::PathBuf {
+    let p = Path::new(pairing_path);
+    let dir = p.parent().unwrap_or_else(|| Path::new("."));
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("device");
+    dir.join(format!("rp_{stem}.plist"))
 }
 
 async fn get_str(lockdown: &mut LockdownClient, key: &str) -> Option<String> {

@@ -32,15 +32,16 @@
 
 ## Flows
 
-### Bootstrap (one-time, Mac/Linux + USB)
-1. `cli pair` — over USB creates the pairing file, enables Wi-Fi connections, uploads the pairing file to the server.
-2. Web UI: Apple ID sign-in (SRP + 2FA prompt), the server obtains the certificate + team.
-3. The server signs the store app and installs it on the iPad over the network.
+### Bootstrap (one-time, USB)
+1. Pair the iPad over USB from the app. This creates the classic lockdown pairing file, enables Wi-Fi connections, and additionally creates a RemotePairing (Ed25519) record — the second pairing iOS 17+ needs to open the RemoteXPC tunnel over Wi-Fi.
+2. Apple ID sign-in (SRP + 2FA prompt); the server obtains the certificate + team.
 
 ### Installing an app
-1. The IPA is uploaded via the web UI (or picked from the catalog in the store app).
+1. The IPA is uploaded from the app.
 2. Server: unpacks → rewrites the bundle ID to its own App ID → generates/downloads a provisioning profile → signs (including nested frameworks and extensions) → recomputes CodeResources.
-3. The server establishes a RemoteXPC tunnel to the iPad (pairing file, CoreDevice), AFC upload into PublicStaging, `installation_proxy` install.
+3. The server installs on the iPad, choosing the transport:
+   - **USB** (preferred): direct AFC upload into PublicStaging + `installation_proxy`, over usbmux — bypasses the userspace tunnel, so bulk transfer is fast.
+   - **Wi-Fi** (iOS 17+): RemotePairing verify → TLS-PSK tunnel → userspace TCP stack (jktcp) → RSD → AFC + `installation_proxy` over the tunnel.
 
 ### Refresh (automatic)
 - The scheduler tracks the profile expiration for each installed app.

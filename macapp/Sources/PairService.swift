@@ -7,7 +7,7 @@ final class PairService: ObservableObject {
     enum Phase: Equatable {
         case idle
         case running
-        case success(udid: String, name: String, address: String?)
+        case success(udid: String, name: String, address: String?, wireless: Bool)
         case failed(String)
     }
 
@@ -49,7 +49,8 @@ final class PairService: ObservableObject {
                 let udid = obj?["udid"] as? String ?? ""
                 let name = obj?["name"] as? String ?? "iPad"
                 let addr = obj?["address"] as? String
-                phase = .success(udid: udid, name: name, address: addr)
+                let wireless = obj?["wireless_ready"] as? Bool ?? false
+                phase = .success(udid: udid, name: name, address: addr, wireless: wireless)
             } else {
                 phase = .failed(obj?["error"] as? String ?? "Párování selhalo (HTTP \(http.statusCode))")
             }

@@ -248,6 +248,18 @@ pub async fn pair_usb(
     .execute(&st.db)
     .await?;
 
+    // Also create the RemotePairing record needed for wireless installs (iOS 17+).
+    // Best-effort: the device is already trusted, so USB installs keep working even
+    // if this second pairing is declined.
+    let rp_path = crate::pairing::rp_pairing_path(&path.to_string_lossy());
+    let wireless_ready = match crate::pairing::create_rp_pairing(&res.udid, &rp_path).await {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!("RemotePairing (bezdrát) se nepodařilo vytvořit: {e:?}");
+            false
+        }
+    };
+
     Ok(Json(json!({
         "udid": res.udid,
         "name": res.name,
@@ -255,6 +267,7 @@ pub async fn pair_usb(
         "address": address,
         "auto_detected_ip": res.address,
         "wifi_mac": res.wifi_mac,
+        "wireless_ready": wireless_ready,
     })))
 }
 
