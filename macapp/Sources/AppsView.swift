@@ -9,8 +9,8 @@ struct AppsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                // Přehled App ID účtu ukazujeme jen po přihlášení Apple ID —
-                // teprve pak známe skutečný stav účtu (viz Developer Services).
+                // We only show the account's App ID overview after signing in with an Apple ID —
+                // only then do we know the actual account state (see Developer Services).
                 if state.account?.authState == "logged_in" {
                     FreeAccountCard()
                 }
@@ -105,7 +105,7 @@ struct AppsView: View {
     }
 }
 
-/// Přehled App ID účtu ze skutečného stavu na Apple (Developer Services).
+/// Account App ID overview based on the actual state on Apple (Developer Services).
 struct FreeAccountCard: View {
     @EnvironmentObject var state: AppState
 

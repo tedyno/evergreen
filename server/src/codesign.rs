@@ -1,9 +1,9 @@
-//! Resign pipeline pro macOS: provisioning přes Developer Services (devportal)
-//! + vlastní podpis systémovými nástroji (`openssl`, `security`, `codesign`).
+//! Resign pipeline for macOS: provisioning via Developer Services (devportal)
+//! + signing with the system tools (`openssl`, `security`, `codesign`).
 //!
-//! Homesign varianta B běží jen na macOS, takže je nejrobustnější použít Apple
-//! vlastní `codesign` (zvládne nested frameworky/extensions i CodeResources) než
-//! reimplementovat podpis v Rustu.
+//! Homesign variant B runs only on macOS, so the most robust approach is to use
+//! Apple's own `codesign` (it handles nested frameworks/extensions and CodeResources)
+//! rather than reimplementing signing in Rust.
 
 use std::path::{Path, PathBuf};
 
@@ -14,17 +14,17 @@ use crate::models::{Device, Ipa};
 use crate::signer::SignedIpa;
 use crate::state::AppState;
 
-// Absolutní cesty — GUI appka má osekaný PATH.
+// Absolute paths — the GUI app has a stripped-down PATH.
 const OPENSSL: &str = "/usr/bin/openssl";
 const SECURITY: &str = "/usr/bin/security";
 const CODESIGN: &str = "/usr/bin/codesign";
 const UNZIP: &str = "/usr/bin/unzip";
 const ZIP: &str = "/usr/bin/zip";
 
-/// Celý resign tok: provisioning + podpis. Vrací podepsanou IPA.
+/// The whole resign flow: provisioning + signing. Returns the signed IPA.
 pub async fn provision_and_sign(st: &AppState, ipa: &Ipa, device: &Device) -> Result<SignedIpa> {
-    // Offline cesta: máme-li na disku cert+klíč+profil (a profil je platný),
-    // přepodepíšeme bez jediného volání Apple (obchází i throttle -22411).
+    // Offline path: if we have cert+key+profile on disk (and the profile is valid),
+    // we re-sign without a single Apple call (this also sidesteps throttle -22411).
     if let Some(signed) = try_offline_resign(st, ipa).await? {
         return Ok(signed);
     }
@@ -32,31 +32,31 @@ pub async fn provision_and_sign(st: &AppState, ipa: &Ipa, device: &Device) -> Re
     let auth = st.apple.xcode_auth().await.context("získání Xcode auth")?;
     let team_id = devportal::first_team_id(&auth).await.context("listTeams")?;
 
-    // 1) Zaregistruj zařízení (idempotentně).
+    // 1) Register the device (idempotently).
     devportal::add_device(&auth, &team_id, &device.udid, &device.name)
         .await
         .context("registrace zařízení")?;
 
-    // 2) Zajisti podpisovou identitu (cert + klíč), reuse z disku.
+    // 2) Ensure the signing identity (cert + key), reused from disk.
     let identity = ensure_identity(st, &auth, &team_id).await.context("certifikát")?;
 
-    // Původní bundle id patří vývojáři appky (např. com.shapr3d.shapr) a nejde
-    // zaregistrovat na náš účet. Přepíšeme ho na unikátní pod naším týmem —
-    // deterministicky (stejné při refreshi → upgrade, ne duplikát).
+    // The original bundle id belongs to the app's developer (e.g. com.shapr3d.shapr) and
+    // can't be registered on our account. We rewrite it to a unique one under our team —
+    // deterministically (the same on refresh → upgrade, not a duplicate).
     let new_bundle_id = format!("{}.{}", ipa.bundle_id, team_id.to_lowercase());
 
-    // 3) Zajisti App ID pro nový bundle id.
+    // 3) Ensure an App ID for the new bundle id.
     let app_id_id = devportal::ensure_app_id(&auth, &team_id, &new_bundle_id, &ipa.name)
         .await
         .context("App ID")?;
 
-    // 4) Stáhni provisioning profil (a ulož pro budoucí offline resign/refresh).
+    // 4) Download the provisioning profile (and store it for future offline resign/refresh).
     let profile = devportal::download_profile(&auth, &team_id, &app_id_id)
         .await
         .context("provisioning profil")?;
     let _ = tokio::fs::write(signing_dir(st).join("profile.mobileprovision"), &profile).await;
 
-    // 5) Podepiš IPA (přepíše bundle id v Info.plist).
+    // 5) Sign the IPA (rewrites the bundle id in Info.plist).
     let signed_path = sign_ipa(st, ipa, &identity, &profile, &new_bundle_id).await?;
 
     let profile_expires = crate::signer::parse_profile_expiration_pub(&profile);
@@ -67,8 +67,8 @@ pub async fn provision_and_sign(st: &AppState, ipa: &Ipa, device: &Device) -> Re
     })
 }
 
-/// Offline resign z uložených cert+klíč+profil — bez volání Apple. None, když
-/// něco chybí nebo profil vypršel.
+/// Offline resign from stored cert+key+profile — without calling Apple. None if
+/// something is missing or the profile has expired.
 async fn try_offline_resign(st: &AppState, ipa: &Ipa) -> Result<Option<SignedIpa>> {
     let dir = signing_dir(st);
     let key_pem = dir.join("key.pem");
@@ -79,14 +79,14 @@ async fn try_offline_resign(st: &AppState, ipa: &Ipa) -> Result<Option<SignedIpa
     }
 
     let profile = tokio::fs::read(&profile_path).await?;
-    // Platnost profilu.
+    // Profile validity.
     let expires = crate::signer::parse_profile_expiration_pub(&profile);
     if expires.map(|e| e <= chrono::Utc::now()).unwrap_or(true) {
         tracing::info!("offline profil vypršel/neznámý — použiju online cestu");
         return Ok(None);
     }
 
-    // new_bundle_id z application-identifier ("{TEAMID}.{bundleid}").
+    // new_bundle_id from application-identifier ("{TEAMID}.{bundleid}").
     let Some(new_bundle_id) = profile_bundle_id(&profile) else {
         return Ok(None);
     };
@@ -103,7 +103,7 @@ async fn try_offline_resign(st: &AppState, ipa: &Ipa) -> Result<Option<SignedIpa
     }))
 }
 
-/// Vytáhne bundle id z profilu (Entitlements → application-identifier bez team prefixu).
+/// Extracts the bundle id from the profile (Entitlements → application-identifier without the team prefix).
 fn profile_bundle_id(profile: &[u8]) -> Option<String> {
     let start = find(profile, b"<?xml")?;
     let end = find(&profile[start..], b"</plist>")? + start + b"</plist>".len();
@@ -118,7 +118,7 @@ fn profile_bundle_id(profile: &[u8]) -> Option<String> {
     app_id.split_once('.').map(|(_, b)| b.to_string())
 }
 
-/// Podpisová identita uložená na disku (cert DER + privátní klíč PEM).
+/// Signing identity stored on disk (cert DER + private key PEM).
 struct Identity {
     cert_der_path: PathBuf,
     key_pem_path: PathBuf,
@@ -129,15 +129,15 @@ fn signing_dir(st: &AppState) -> PathBuf {
     st.cfg.data_dir.join("signing")
 }
 
-/// Reuse cert+klíč z disku, jinak vygeneruj CSR a získej cert z účtu.
+/// Reuse cert+key from disk, otherwise generate a CSR and obtain a cert from the account.
 async fn ensure_identity(st: &AppState, auth: &XcodeAuth, team_id: &str) -> Result<Identity> {
     let dir = signing_dir(st);
     tokio::fs::create_dir_all(&dir).await?;
     let key_pem = dir.join("key.pem");
     let cert_der = dir.join("cert.der");
 
-    // 1) Máme-li klíč, zkus k němu dohledat vydaný cert na účtu (bez plýtvání
-    //    dalším certem z free limitu).
+    // 1) If we have a key, try to find an issued cert for it on the account (without wasting
+    //    another cert from the free limit).
     if key_pem.exists() {
         if let Ok(our_mod) = key_modulus(&key_pem).await {
             if let Ok(certs) = devportal::list_dev_certs(auth, team_id).await {
@@ -152,7 +152,7 @@ async fn ensure_identity(st: &AppState, auth: &XcodeAuth, team_id: &str) -> Resu
         }
     }
 
-    // 2) Jinak vygeneruj nový klíč + CSR a získej cert.
+    // 2) Otherwise generate a new key + CSR and obtain a cert.
     let csr_pem = dir.join("csr.pem");
     run(
         OPENSSL,
@@ -172,7 +172,7 @@ async fn ensure_identity(st: &AppState, auth: &XcodeAuth, team_id: &str) -> Resu
         .await
         .context("submitCSR")?;
 
-    // Vyber z účtu cert, jehož veřejný klíč sedí s naším privátním (spolehlivé).
+    // Pick the cert from the account whose public key matches our private one (reliable).
     let our_mod = key_modulus(&key_pem).await?;
     let certs = devportal::list_dev_certs(auth, team_id).await.context("listCerts")?;
     let mut matched: Option<Vec<u8>> = None;
@@ -189,15 +189,15 @@ async fn ensure_identity(st: &AppState, auth: &XcodeAuth, team_id: &str) -> Resu
     Ok(Identity { cert_der_path: cert_der, key_pem_path: key_pem, sha1 })
 }
 
-/// Modulus RSA privátního klíče (hex) — pro párování s certem.
+/// Modulus of the RSA private key (hex) — for matching against the cert.
 async fn key_modulus(key_pem: &Path) -> Result<String> {
     let out = output(OPENSSL, &["rsa", "-in", key_pem.to_str().unwrap(), "-noout", "-modulus"]).await?;
     Ok(out.trim().to_string())
 }
 
-/// Modulus veřejného klíče v certifikátu (DER).
+/// Modulus of the public key in the certificate (DER).
 async fn cert_der_modulus(cert_der: &[u8]) -> Result<String> {
-    // openssl čte DER ze stdin.
+    // openssl reads DER from stdin.
     let tmp = std::env::temp_dir().join(format!("hs-cert-{}.der", uuid::Uuid::new_v4()));
     tokio::fs::write(&tmp, cert_der).await?;
     let out = output(
@@ -209,7 +209,7 @@ async fn cert_der_modulus(cert_der: &[u8]) -> Result<String> {
     Ok(out?.trim().to_string())
 }
 
-/// Sedí privátní klíč s certifikátem?
+/// Does the private key match the certificate?
 async fn key_matches_cert(key_pem: &Path, cert_der: &Path) -> Result<bool> {
     let km = key_modulus(key_pem).await?;
     let der = tokio::fs::read(cert_der).await?;
@@ -217,7 +217,7 @@ async fn key_matches_cert(key_pem: &Path, cert_der: &Path) -> Result<bool> {
     Ok(km == cm)
 }
 
-/// SHA-1 fingerprint certifikátu (identita pro `codesign -s`).
+/// SHA-1 fingerprint of the certificate (identity for `codesign -s`).
 async fn cert_sha1(cert_der: &Path) -> Result<String> {
     let out = output(
         OPENSSL,
@@ -246,11 +246,11 @@ async fn machine_id(st: &AppState) -> Result<String> {
     Ok(id)
 }
 
-/// Serializuje podpis — sdílený keychain a globální keychain search-list nesnese
-/// souběh (refresh scheduler vs. uživatelská install úloha).
+/// Serializes signing — the shared keychain and the global keychain search-list can't
+/// tolerate concurrency (refresh scheduler vs. a user install job).
 static SIGN_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-/// Rozbalí IPA, vloží profil + entitlements a podepíše `codesign`em; vrátí .ipa.
+/// Unpacks the IPA, inserts the profile + entitlements and signs it with `codesign`; returns the .ipa.
 async fn sign_ipa(
     st: &AppState,
     ipa: &Ipa,
@@ -262,7 +262,7 @@ async fn sign_ipa(
     let work = st.cfg.data_dir.join("signwork").join(uuid::Uuid::new_v4().to_string());
     tokio::fs::create_dir_all(&work).await?;
 
-    // Vlastní práce v bloku, ať work dir vždy uklidíme (i při chybě).
+    // The actual work in a block, so we always clean up the work dir (even on error).
     let result = sign_ipa_inner(st, ipa, identity, profile, new_bundle_id, &work).await;
     let _ = tokio::fs::remove_dir_all(&work).await;
     result
@@ -278,33 +278,33 @@ async fn sign_ipa_inner(
 ) -> Result<PathBuf> {
     let work_s = work.to_string_lossy().to_string();
 
-    // Rozbal IPA.
+    // Unpack the IPA.
     run(UNZIP, &["-q", &ipa.path, "-d", &work_s]).await.context("unzip IPA")?;
 
-    // Najdi Payload/*.app.
+    // Find Payload/*.app.
     let app_dir = first_app_bundle(&work.join("Payload")).await?;
     let app_s = app_dir.to_string_lossy().to_string();
 
-    // Přepiš CFBundleIdentifier v Info.plist na nový bundle id.
+    // Rewrite CFBundleIdentifier in Info.plist to the new bundle id.
     rewrite_bundle_id(&app_dir.join("Info.plist"), new_bundle_id).await
         .context("přepis bundle id v Info.plist")?;
 
-    // Vlož provisioning profil.
+    // Insert the provisioning profile.
     tokio::fs::write(app_dir.join("embedded.mobileprovision"), profile).await?;
 
-    // Entitlements z profilu.
+    // Entitlements from the profile.
     let entitlements = extract_entitlements(profile)
         .ok_or_else(|| anyhow!("profil neobsahuje Entitlements"))?;
     let ent_path = work.join("entitlements.plist");
     tokio::fs::write(&ent_path, entitlements).await?;
 
-    // Dočasný keychain s identitou; podepiš vnořené frameworky jednotlivě + verify.
+    // Temporary keychain with the identity; sign the nested frameworks individually + verify.
     let keychain = Keychain::create(st, identity).await?;
     let sign_res = sign_all(&app_s, &ent_path, &identity.sha1, &keychain.path).await;
     keychain.cleanup().await;
     sign_res.context("codesign")?;
 
-    // Zabal zpět do .ipa (zip z work adresáře → cesty "Payload/...").
+    // Pack back into the .ipa (zip from the work dir → paths "Payload/...").
     let out_ipa = st.cfg.ipa_dir().join(format!("{}-signed.ipa", ipa.id));
     let _ = tokio::fs::remove_file(&out_ipa).await;
     run_in(work, ZIP, &["-qr", &out_ipa.to_string_lossy(), "Payload"]).await.context("zip IPA")?;
@@ -312,12 +312,12 @@ async fn sign_ipa_inner(
     Ok(out_ipa)
 }
 
-/// Podepíše všechny vnořené frameworky/dylib/appex (od nejhlubšího), pak app.
+/// Signs all nested frameworks/dylib/appex (from the deepest), then the app.
 async fn sign_all(app_path: &str, ent_path: &Path, sha1: &str, keychain: &Path) -> Result<()> {
     let ent = ent_path.to_string_lossy().to_string();
     let kc = keychain.to_string_lossy().to_string();
 
-    // Najdi vnořený podepsatelný kód.
+    // Find the nested signable code.
     let out = output(
         "/usr/bin/find",
         &[
@@ -329,7 +329,7 @@ async fn sign_all(app_path: &str, ent_path: &Path, sha1: &str, keychain: &Path) 
     .unwrap_or_default();
 
     let mut items: Vec<String> = out.lines().map(|s| s.to_string()).filter(|s| !s.is_empty()).collect();
-    // Nejhlubší první (víc lomítek = hlouběji vnořené).
+    // Deepest first (more slashes = more deeply nested).
     items.sort_by_key(|p| std::cmp::Reverse(p.matches('/').count()));
 
     for item in &items {
@@ -341,7 +341,7 @@ async fn sign_all(app_path: &str, ent_path: &Path, sha1: &str, keychain: &Path) 
         .with_context(|| format!("podpis vnořeného {item}"))?;
     }
 
-    // Hlavní app s entitlements.
+    // The main app with entitlements.
     run(
         CODESIGN,
         &[
@@ -352,7 +352,7 @@ async fn sign_all(app_path: &str, ent_path: &Path, sha1: &str, keychain: &Path) 
     .await
     .context("podpis hlavní app")?;
 
-    // Ověř podpis lokálně (chytne nepodepsaný nested kód dřív než zařízení).
+    // Verify the signature locally (catches unsigned nested code before the device does).
     run(CODESIGN, &["--verify", "--deep", "--strict", app_path])
         .await
         .context("ověření podpisu (--verify --deep --strict)")?;
@@ -360,7 +360,7 @@ async fn sign_all(app_path: &str, ent_path: &Path, sha1: &str, keychain: &Path) 
     Ok(())
 }
 
-/// Přepíše CFBundleIdentifier v Info.plist (zachová formát binary/xml).
+/// Rewrites CFBundleIdentifier in Info.plist (preserves the binary/xml format).
 async fn rewrite_bundle_id(info_plist: &Path, new_id: &str) -> Result<()> {
     let bytes = tokio::fs::read(info_plist).await?;
     let mut val: plist::Value = plist::from_bytes(&bytes)?;
@@ -383,7 +383,7 @@ async fn first_app_bundle(payload: &Path) -> Result<PathBuf> {
     Err(anyhow!("v Payload není .app"))
 }
 
-/// Vytáhne `<Entitlements>` dict z provisioning profilu jako XML plist.
+/// Extracts the `<Entitlements>` dict from the provisioning profile as an XML plist.
 fn extract_entitlements(profile: &[u8]) -> Option<Vec<u8>> {
     let start = find(profile, b"<?xml")?;
     let end = find(&profile[start..], b"</plist>")? + start + b"</plist>".len();
@@ -400,7 +400,7 @@ fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
     hay.windows(needle.len()).position(|w| w == needle)
 }
 
-/// Dočasný keychain s importovanou podpisovou identitou.
+/// Temporary keychain with the imported signing identity.
 struct Keychain {
     path: PathBuf,
     prev_list: Vec<String>,
@@ -416,7 +416,7 @@ impl Keychain {
         run(SECURITY, &["unlock-keychain", "-p", pass, path.to_str().unwrap()]).await?;
         run(SECURITY, &["set-keychain-settings", path.to_str().unwrap()]).await?;
 
-        // Postav p12 z cert+klíč a naimportuj.
+        // Build a p12 from cert+key and import it.
         let dir = st.cfg.data_dir.join("signing");
         let cert_pem = dir.join("cert.pem");
         run(
@@ -439,7 +439,7 @@ impl Keychain {
               "-P", "homesign", "-A", "-T", CODESIGN],
         )
         .await?;
-        // Povol codesignu přístup ke klíči bez UI promptu.
+        // Allow codesign to access the key without a UI prompt.
         let _ = run(
             SECURITY,
             &["set-key-partition-list", "-S", "apple-tool:,apple:,codesign:", "-s",
@@ -447,7 +447,7 @@ impl Keychain {
         )
         .await;
 
-        // Přidej keychain do search listu, ať ho codesign najde.
+        // Add the keychain to the search list so codesign finds it.
         let prev = output(SECURITY, &["list-keychains", "-d", "user"]).await.unwrap_or_default();
         let prev_list: Vec<String> = prev
             .lines()
@@ -466,7 +466,7 @@ impl Keychain {
     }
 
     async fn cleanup(&self) {
-        // Obnov původní search list.
+        // Restore the original search list.
         let mut args = vec!["list-keychains".to_string(), "-d".into(), "user".into(), "-s".into()];
         args.extend(self.prev_list.iter().cloned());
         let argrefs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
@@ -475,7 +475,7 @@ impl Keychain {
     }
 }
 
-// ------------------------------------------------------------- proces util
+// ------------------------------------------------------------- process util
 
 async fn run(bin: &str, args: &[&str]) -> Result<()> {
     let out = tokio::process::Command::new(bin).args(args).output().await

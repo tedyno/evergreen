@@ -32,7 +32,7 @@ struct HomesignApp: App {
         }
     }
 
-    /// Podle režimu buď spustí vlastní server, nebo se připojí na vzdálený.
+    /// Depending on the mode, either starts the embedded server or connects to a remote one.
     private func bootstrap() async {
         if state.useLocalServer {
             await server.startIfNeeded()
@@ -44,7 +44,7 @@ struct HomesignApp: App {
     }
 }
 
-/// Zajišťuje, že se embedded server při zavření appky korektně ukončí.
+/// Ensures the embedded server is shut down cleanly when the app closes.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var server: ServerController?
 

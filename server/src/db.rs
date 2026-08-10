@@ -1,4 +1,4 @@
-//! SQLite pool + migrace.
+//! SQLite pool + migrations.
 
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;

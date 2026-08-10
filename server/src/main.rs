@@ -1,5 +1,5 @@
-//! homesign server — self-hosted sideloading pro iPad/iPhone.
-//! Viz docs/architecture.md.
+//! homesign server — self-hosted sideloading for iPad/iPhone.
+//! See docs/architecture.md.
 
 mod apple;
 mod codesign;
@@ -36,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
 
     let pool = db::connect(&cfg.db_url()).await?;
 
-    // Úklid: úlohy, co „visely" při minulém běhu (server se restartoval během nich).
+    // Cleanup: jobs left "hanging" from the previous run (the server restarted mid-job).
     let _ = sqlx::query(
         "UPDATE job SET status = 'error', message = 'přerušeno (restart serveru)', updated_at = ?
          WHERE status IN ('running', 'queued')",
@@ -47,12 +47,12 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState::new(cfg.clone(), pool);
 
-    // Obnov přihlášenou Apple ID session z disku, ať přežije restart serveru.
+    // Restore the logged-in Apple ID session from disk so it survives a server restart.
     if let Err(e) = restore_account_session(&state).await {
         tracing::warn!("Apple ID session se nepodařilo obnovit: {e:?}");
     }
 
-    // Refresh scheduler (jádro — obnova 7denních profilů ze serveru).
+    // Refresh scheduler (the core — renewing the 7-day profiles from the server).
     refresh::spawn(state.clone());
 
     let app = web::router(state);
@@ -62,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Načte uloženou Apple ID session z DB a obnoví přihlášení (bez hesla/2FA).
+/// Loads the stored Apple ID session from the DB and restores the login (no password/2FA).
 async fn restore_account_session(state: &AppState) -> anyhow::Result<()> {
     let row: Option<(String, Option<String>)> =
         sqlx::query_as("SELECT apple_id, session_enc FROM account WHERE id = 1")

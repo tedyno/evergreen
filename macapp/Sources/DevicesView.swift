@@ -42,7 +42,7 @@ struct DevicesView: View {
     }
 }
 
-/// Průvodce párováním — appka zavolá server, ten spáruje iPad a IP zjistí sám.
+/// Pairing wizard — the app calls the server, which pairs the iPad and detects the IP itself.
 struct PairSheet: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var pair: PairService
@@ -111,7 +111,7 @@ struct PairSheet: View {
                     Text("IP uložena ručně.")
                         .font(.caption).foregroundStyle(.secondary)
                 } else {
-                    // Fallback jen když se auto-detekce nepovede.
+                    // Fallback only when auto-detection fails.
                     Text("IP se nepodařilo zjistit automaticky (iPad možná ještě není na Wi-Fi). Můžeš ji zadat ručně:")
                         .font(.caption).foregroundStyle(.orange)
                     HStack {

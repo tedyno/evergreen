@@ -1,5 +1,5 @@
-//! Developer Services API klient (developerservices2.apple.com) — plist/XML
-//! protokol, který používá Xcode. Auth přes X-Apple-GS-Token (z `XcodeAuth`).
+//! Developer Services API client (developerservices2.apple.com) — the plist/XML
+//! protocol that Xcode uses. Auth via X-Apple-GS-Token (from `XcodeAuth`).
 
 #![allow(dead_code)]
 
@@ -13,7 +13,7 @@ pub const BASE: &str = "https://developerservices2.apple.com/services/QH65B2";
 pub const PROTOCOL_VERSION: &str = "QH65B2";
 pub const CLIENT_ID: &str = "XABBG36SBA";
 
-/// App ID na účtu (z listAppIds).
+/// An App ID on the account (from listAppIds).
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct AppIdEntry {
     pub app_id_id: String,
@@ -22,7 +22,7 @@ pub struct AppIdEntry {
     pub expiration: Option<String>,
 }
 
-/// Odešle plist request na Developer Services akci a vrátí odpověď jako plist.
+/// Sends a plist request to a Developer Services action and returns the response as a plist.
 async fn request(
     auth: &XcodeAuth,
     action: &str,
@@ -53,11 +53,11 @@ async fn request(
         .header("X-Apple-App-Info", "com.apple.gs.xcode.auth")
         .header("X-Xcode-Version", "14.2 (14C18)");
 
-    // Anisette hlavičky z AOSKit.
+    // Anisette headers from AOSKit.
     for (k, v) in &auth.anisette {
         req = req.header(k.as_str(), v.as_str());
     }
-    // Doplňkové hlavičky, které AOSKit nedává.
+    // Additional headers that AOSKit doesn't provide.
     let now = chrono::Utc::now();
     req = req
         .header("X-Apple-I-Client-Time", now.format("%Y-%m-%dT%H:%M:%SZ").to_string())
@@ -72,7 +72,7 @@ async fn request(
         anyhow!("odpověď není plist (HTTP {status}): {e}; tělo: {snippet}")
     })?;
 
-    // Chybová pole Developer Services.
+    // Developer Services error fields.
     if let Some(rc) = dict.get("resultCode").and_then(|v| v.as_signed_integer()) {
         if rc != 0 {
             let msg = dict
@@ -86,7 +86,7 @@ async fn request(
     Ok(dict)
 }
 
-/// Vrátí teamId prvního týmu (free účet má typicky jeden).
+/// Returns the teamId of the first team (a free account typically has one).
 pub async fn first_team_id(auth: &XcodeAuth) -> Result<String> {
     let resp = request(auth, "listTeams.action", &[], plist::Dictionary::new()).await?;
     let teams = resp
@@ -100,7 +100,7 @@ pub async fn first_team_id(auth: &XcodeAuth) -> Result<String> {
     Ok(team_id.to_string())
 }
 
-/// Seznam App ID na účtu (globální — i ta založená AltStorem apod.).
+/// List of App IDs on the account (global — including ones created by AltStore etc.).
 pub async fn list_app_ids(auth: &XcodeAuth, team_id: &str) -> Result<Vec<AppIdEntry>> {
     let mut params = plist::Dictionary::new();
     params.insert("teamId".into(), team_id.into());
@@ -125,23 +125,23 @@ pub async fn list_app_ids(auth: &XcodeAuth, team_id: &str) -> Result<Vec<AppIdEn
     Ok(out)
 }
 
-/// Kompletní přehled App ID účtu (teamId + seznam) — pro appku.
+/// Complete overview of the account's App IDs (teamId + list) — for the app.
 pub async fn account_app_ids(auth: &XcodeAuth) -> Result<(String, Vec<AppIdEntry>)> {
     let team = first_team_id(auth).await?;
     let ids = list_app_ids(auth, &team).await?;
     Ok((team, ids))
 }
 
-// ------------------------------------------------------------- zařízení
+// ------------------------------------------------------------- devices
 
-/// Zaregistruje UDID zařízení (idempotentně — Apple vrátí existující).
+/// Registers a device UDID (idempotently — Apple returns the existing one).
 pub async fn add_device(auth: &XcodeAuth, team_id: &str, udid: &str, name: &str) -> Result<String> {
     let mut params = plist::Dictionary::new();
     params.insert("teamId".into(), team_id.into());
     params.insert("deviceNumber".into(), udid.into());
     params.insert("name".into(), name.into());
     let resp = request(auth, "ios/addDevice.action", &[("teamId", team_id)], params).await;
-    // Když už zařízení existuje, Apple vrátí chybu — vezmeme z listDevices.
+    // If the device already exists, Apple returns an error — we take it from listDevices.
     match resp {
         Ok(d) => Ok(d
             .get("device")
@@ -162,7 +162,7 @@ pub async fn add_device(auth: &XcodeAuth, team_id: &str, udid: &str, name: &str)
     }
 }
 
-/// (UDID, deviceId) registrovaných zařízení.
+/// (UDID, deviceId) of registered devices.
 pub async fn list_devices(auth: &XcodeAuth, team_id: &str) -> Result<Vec<(String, String)>> {
     let mut params = plist::Dictionary::new();
     params.insert("teamId".into(), team_id.into());
@@ -180,16 +180,16 @@ pub async fn list_devices(auth: &XcodeAuth, team_id: &str) -> Result<Vec<(String
         .collect())
 }
 
-// ------------------------------------------------------------- certifikát
+// ------------------------------------------------------------- certificate
 
-/// Development certifikát (DER + serial) z účtu.
+/// Development certificate (DER + serial) from the account.
 #[derive(Debug, Clone)]
 pub struct DevCert {
     pub cert_der: Vec<u8>,
     pub serial_number: String,
 }
 
-/// Odešle CSR (PEM) a vrátí development certifikát.
+/// Submits a CSR (PEM) and returns the development certificate.
 pub async fn submit_csr(
     auth: &XcodeAuth,
     team_id: &str,
@@ -212,7 +212,7 @@ pub async fn submit_csr(
     if let Some(der) = cr.get("certContent").and_then(|v| v.as_data()) {
         return Ok(DevCert { cert_der: der.to_vec(), serial_number: serial });
     }
-    // Někdy je cert až v listAllDevelopmentCerts podle serialu.
+    // Sometimes the cert is only in listAllDevelopmentCerts, keyed by serial.
     let certs = list_dev_certs(auth, team_id).await?;
     certs
         .into_iter()
@@ -220,7 +220,7 @@ pub async fn submit_csr(
         .ok_or_else(|| anyhow!("cert po CSR nenalezen"))
 }
 
-/// Seznam development certifikátů (DER + serial).
+/// List of development certificates (DER + serial).
 pub async fn list_dev_certs(auth: &XcodeAuth, team_id: &str) -> Result<Vec<DevCert>> {
     let mut params = plist::Dictionary::new();
     params.insert("teamId".into(), team_id.into());
@@ -237,11 +237,11 @@ pub async fn list_dev_certs(auth: &XcodeAuth, team_id: &str) -> Result<Vec<DevCe
         .collect())
 }
 
-// ------------------------------------------------------------- App ID + profil
+// ------------------------------------------------------------- App ID + profile
 
-/// Založí App ID pro bundle id (idempotentně — vrátí existující appIdId).
+/// Creates an App ID for the bundle id (idempotently — returns the existing appIdId).
 pub async fn ensure_app_id(auth: &XcodeAuth, team_id: &str, bundle_id: &str, name: &str) -> Result<String> {
-    // Nejdřív zkus najít existující.
+    // First try to find an existing one.
     let existing = list_app_ids(auth, team_id).await?;
     if let Some(a) = existing.iter().find(|a| a.identifier == bundle_id) {
         return Ok(a.app_id_id.clone());
@@ -259,7 +259,7 @@ pub async fn ensure_app_id(auth: &XcodeAuth, team_id: &str, bundle_id: &str, nam
         .ok_or_else(|| anyhow!("odpověď addAppId nemá appIdId"))
 }
 
-/// Stáhne team provisioning profil pro App ID (obsahuje všechna zařízení týmu).
+/// Downloads the team provisioning profile for the App ID (contains all the team's devices).
 pub async fn download_profile(auth: &XcodeAuth, team_id: &str, app_id_id: &str) -> Result<Vec<u8>> {
     let mut params = plist::Dictionary::new();
     params.insert("teamId".into(), team_id.into());
@@ -279,7 +279,7 @@ pub async fn download_profile(auth: &XcodeAuth, team_id: &str, app_id_id: &str) 
         .ok_or_else(|| anyhow!("odpověď downloadProfile nemá encodedProfile"))
 }
 
-/// App ID name smí být jen alfanumerické + mezery.
+/// The App ID name may only be alphanumeric + spaces.
 fn sanitize_app_name(name: &str) -> String {
     let s: String = name
         .chars()
@@ -289,7 +289,7 @@ fn sanitize_app_name(name: &str) -> String {
     if s.is_empty() { "Homesign App".to_string() } else { s.to_string() }
 }
 
-/// Ponecháno jako M2 (potřebují další doladění proti účtu a zařízení).
+/// Left as M2 (needs further tuning against the account and device).
 pub struct SigningIdentity {
     pub certificate_der: Vec<u8>,
     pub private_key_pem: String,
@@ -325,5 +325,5 @@ impl DevPortalClient {
     }
 }
 
-/// Nepoužité, ale drží import HashMap čitelný pro budoucí rozšíření.
+/// Unused, but keeps the HashMap import readable for future extension.
 pub type Headers = HashMap<String, String>;

@@ -1,9 +1,9 @@
-//! Refresh scheduler — jádro celého projektu.
+//! Refresh scheduler — the core of the whole project.
 //!
-//! Běží jako tokio úloha, každou hodinu projde instalace a ty, kterým do expirace
-//! profilu zbývá méně než `refresh_before_days`, přepodepíše a přeinstaluje.
-//! Refresh iniciuje SERVER (ne iOS appka), takže iOS nemá jak ho zaškrtit — appka
-//! na iPadu musí jen být dosažitelná na síti.
+//! Runs as a tokio task; every hour it goes through the installations and re-signs
+//! and re-installs those whose profile has less than `refresh_before_days` until expiration.
+//! The refresh is initiated by the SERVER (not the iOS app), so iOS has no way to block it —
+//! the app on the iPad only needs to be reachable on the network.
 
 use std::time::Duration;
 
@@ -14,7 +14,7 @@ use crate::state::AppState;
 
 pub fn spawn(st: AppState) {
     tokio::spawn(async move {
-        // Malé zpoždění po startu, ať se server stihne rozběhnout.
+        // A small delay after startup so the server has time to come up.
         tokio::time::sleep(Duration::from_secs(15)).await;
         loop {
             if let Err(e) = tick(&st).await {
@@ -37,14 +37,15 @@ async fn tick(st: &AppState) -> anyhow::Result<()> {
     for inst in installs {
         let needs = match inst.expires_at() {
             Some(exp) => exp <= threshold,
-            None => false, // bez známé expirace nerefreshujeme automaticky
+            None => false, // without a known expiration we do not refresh automatically
         };
         if !needs {
             continue;
         }
 
-        // Rychlý ping — když je iPad mimo síť, zkusíme příště (bez zápisu chyby,
-        // ať se resign log nezaplní neúspěchy z toho, že iPad zrovna spí).
+        // Quick ping — if the iPad is off the network, we try again next time (without
+        // logging an error, so the resign log doesn't fill up with failures just because
+        // the iPad happens to be asleep).
         let device = match sqlx::query_as::<_, Device>("SELECT * FROM device WHERE udid = ?")
             .bind(&inst.device_udid)
             .fetch_optional(&st.db)
@@ -62,7 +63,7 @@ async fn tick(st: &AppState) -> anyhow::Result<()> {
             "refresh: instalace {} vyprší {:?} — zařazuji resign",
             inst.id, inst.profile_expires
         );
-        // Zařaď jako úlohu (kind 'refresh') → objeví se v resign logu (Úlohy).
+        // Enqueue as a job (kind 'refresh') → it shows up in the resign log (Jobs).
         match crate::jobs::enqueue(st, &inst.device_udid, &inst.ipa_id, "refresh").await {
             Ok(job) => crate::jobs::spawn_worker(st.clone(), job.id),
             Err(e) => tracing::warn!("refresh enqueue instalace {} selhal: {e:?}", inst.id),

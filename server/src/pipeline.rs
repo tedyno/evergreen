@@ -1,6 +1,6 @@
-//! Orchestrace celého instalačního toku: podpis → přenos → instalace.
-//! Sem se sbíhají moduly `apple` (účet, profil), `signer` (podpis) a `device`
-//! (tunel + installation_proxy).
+//! Orchestration of the whole install flow: sign → transfer → install.
+//! This is where the `apple` (account, profile), `signer` (signing) and `device`
+//! (tunnel + installation_proxy) modules come together.
 
 use std::future::Future;
 
@@ -9,8 +9,8 @@ use chrono::{DateTime, Utc};
 use crate::models::{Device, Ipa};
 use crate::state::AppState;
 
-/// Provede celý tok pro jednu IPA na jedno zařízení.
-/// Vrací expiraci provisioning profilu (pro scheduler refreshe).
+/// Runs the whole flow for one IPA on one device.
+/// Returns the provisioning profile's expiration (for the refresh scheduler).
 pub async fn install_flow<F, Fut>(
     st: &AppState,
     device: &Device,
@@ -23,15 +23,15 @@ where
 {
     progress(5, "připravuji podpis".into()).await;
 
-    // 1) Podepiš IPA pod naším App ID (přepíše bundle id, vloží profil, podepíše
-    //    hlavní binárku i nested frameworky/extensions).
+    // 1) Sign the IPA under our App ID (rewrites the bundle id, inserts the profile,
+    //    signs the main binary as well as nested frameworks/extensions).
     let signed = crate::signer::resign(st, ipa, device)
         .await
         .map_err(|e| anyhow::anyhow!("podpis selhal: {e:#}"))?;
 
     progress(45, "podepsáno, navazuji spojení se zařízením".into()).await;
 
-    // 2) Nainstaluj přes idevice (iOS 17+ → RemoteXPC tunel + RSD).
+    // 2) Install via idevice (iOS 17+ → RemoteXPC tunnel + RSD).
     let dev_progress = progress.clone();
     crate::device::install_signed(
         device,
@@ -39,7 +39,7 @@ where
         move |pct, msg| {
             let cb = dev_progress.clone();
             async move {
-                // Instalace mapujeme na 45–100 %.
+                // We map the installation to 45–100%.
                 let mapped = 45 + (pct * 55 / 100);
                 cb(mapped, msg).await;
             }

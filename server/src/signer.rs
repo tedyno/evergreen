@@ -1,12 +1,12 @@
-//! Podepisování IPA.
+//! Signing IPAs.
 //!
-//! Dva režimy:
-//!  1. **Passthrough** — IPA už obsahuje `embedded.mobileprovision` (podepsané
-//!     jinde). Nic nepřepisujeme, jen vytáhneme expiraci profilu pro scheduler.
-//!     Tím je M1 (instalace po síti + sledování expirace) plně funkční.
-//!  2. **Resign** — přepis bundle id na naše App ID, vložení profilu z portálu,
-//!     podpis binárky i nested frameworků. To je M2 a vyžaduje přihlášený Apple
-//!     účet + dokončený `devportal`; zatím vrací jasnou chybu, ať nepředstírá.
+//! Two modes:
+//!  1. **Passthrough** — the IPA already contains `embedded.mobileprovision` (signed
+//!     elsewhere). We rewrite nothing, we only read the profile's expiration for the scheduler.
+//!     This makes M1 (installation over the network + expiration tracking) fully functional.
+//!  2. **Resign** — rewrite the bundle id to our App ID, insert the profile from the portal,
+//!     sign the binary and nested frameworks. This is M2 and requires a logged-in Apple
+//!     account + a finished `devportal`; for now it returns a clear error so it doesn't pretend.
 
 use std::io::Read;
 use std::path::PathBuf;
@@ -26,12 +26,12 @@ pub async fn resign(st: &AppState, ipa: &Ipa, device: &Device) -> anyhow::Result
     let src = PathBuf::from(&ipa.path);
     let data = tokio::fs::read(&src).await?;
 
-    // Zjisti, jestli je IPA už podepsaná (má embedded profil).
+    // Determine whether the IPA is already signed (has an embedded profile).
     let bytes = data.clone();
     let embedded = tokio::task::spawn_blocking(move || extract_embedded_profile(&bytes)).await??;
 
     if let Some(profile) = embedded {
-        // Passthrough — IPA je hotová, jen ji přeneseme dál a přečteme expiraci.
+        // Passthrough — the IPA is ready, we just pass it along and read the expiration.
         let expires = parse_profile_expiration(&profile);
         tracing::info!(
             "IPA {} je už podepsaná, passthrough (expirace: {:?})",
@@ -44,7 +44,7 @@ pub async fn resign(st: &AppState, ipa: &Ipa, device: &Device) -> anyhow::Result
         });
     }
 
-    // Máme už podepsaný build s platným profilem? → instaluj bez auth/provisioningu.
+    // Do we already have a signed build with a valid profile? → install without auth/provisioning.
     let cached = st.cfg.ipa_dir().join(format!("{}-signed.ipa", ipa.id));
     if cached.exists() {
         let cbytes = tokio::fs::read(&cached).await?;
@@ -67,7 +67,7 @@ pub async fn resign(st: &AppState, ipa: &Ipa, device: &Device) -> anyhow::Result
         }
     }
 
-    // Resign vyžaduje přihlášený účet.
+    // Resign requires a logged-in account.
     if !st.apple.is_logged_in().await {
         anyhow::bail!(
             "IPA není podepsaná a Apple účet není přihlášený — buď nahraj už podepsané \
@@ -78,7 +78,7 @@ pub async fn resign(st: &AppState, ipa: &Ipa, device: &Device) -> anyhow::Result
     crate::codesign::provision_and_sign(st, ipa, device).await
 }
 
-/// Vytáhne `Payload/*.app/embedded.mobileprovision` z IPA, pokud existuje.
+/// Extracts `Payload/*.app/embedded.mobileprovision` from the IPA, if present.
 fn extract_embedded_profile(data: &[u8]) -> anyhow::Result<Option<Vec<u8>>> {
     let reader = std::io::Cursor::new(data);
     let mut zip = zip::ZipArchive::new(reader)?;
@@ -101,13 +101,13 @@ fn extract_embedded_profile(data: &[u8]) -> anyhow::Result<Option<Vec<u8>>> {
     Ok(Some(buf))
 }
 
-/// Veřejný wrapper pro codesign modul.
+/// Public wrapper for the codesign module.
 pub fn parse_profile_expiration_pub(profile: &[u8]) -> Option<DateTime<Utc>> {
     parse_profile_expiration(profile)
 }
 
-/// Provisioning profil je CMS/PKCS7 obálka kolem XML plistu. Vytáhneme plist a
-/// přečteme `ExpirationDate`.
+/// A provisioning profile is a CMS/PKCS7 envelope around an XML plist. We extract
+/// the plist and read `ExpirationDate`.
 fn parse_profile_expiration(profile: &[u8]) -> Option<DateTime<Utc>> {
     let plist_bytes = extract_plist_from_cms(profile)?;
     let val: plist::Value = plist::from_bytes(&plist_bytes).ok()?;
@@ -121,7 +121,7 @@ fn parse_profile_expiration(profile: &[u8]) -> Option<DateTime<Utc>> {
     None
 }
 
-/// Najde `<?xml ... </plist>` uvnitř binární CMS obálky.
+/// Finds `<?xml ... </plist>` inside the binary CMS envelope.
 fn extract_plist_from_cms(data: &[u8]) -> Option<Vec<u8>> {
     let start = find_subslice(data, b"<?xml")?;
     let end_marker = b"</plist>";

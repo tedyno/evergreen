@@ -1,27 +1,27 @@
-//! Konfigurace serveru z prostředí (12-factor). Vše má rozumný default pro
-//! běh v domácí síti / Dockeru.
+//! Server configuration from the environment (12-factor). Everything has a sane
+//! default for running on a home network / in Docker.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
 #[derive(Clone, Debug)]
 pub struct Config {
-    /// Kam bindovat HTTP server (web UI + API).
+    /// Where to bind the HTTP server (web UI + API).
     pub bind: SocketAddr,
-    /// Datový adresář — SQLite DB, nahrané IPA, pairing files.
+    /// Data directory — SQLite DB, uploaded IPAs, pairing files.
     pub data_dir: PathBuf,
-    /// URL anisette (omnisette) sidecaru pro Apple ID auth.
+    /// URL of the anisette (omnisette) sidecar for Apple ID auth.
     pub anisette_url: String,
-    /// Klíč pro šifrování citlivých polí v DB (Apple ID heslo, session tokeny).
-    /// Base64, 32 bajtů. Když chybí, vygeneruje se a uloží do data_dir/master.key.
+    /// Key for encrypting sensitive fields in the DB (Apple ID password, session tokens).
+    /// Base64, 32 bytes. If missing, it is generated and stored in data_dir/master.key.
     pub master_key: [u8; 32],
-    /// Kolik dní před expirací profilu spustit refresh.
+    /// How many days before profile expiration to trigger a refresh.
     pub refresh_before_days: i64,
 }
 
 impl Config {
     pub fn from_env() -> anyhow::Result<Self> {
-        // Loopback default — server nemá auth vrstvu, nesmí viset na celé síti.
+        // Loopback default — the server has no auth layer, so it must not listen on the whole network.
         let bind = std::env::var("HOMESIGN_BIND")
             .unwrap_or_else(|_| "127.0.0.1:8080".to_string())
             .parse()?;
@@ -73,7 +73,7 @@ fn load_or_create_master_key(data_dir: &std::path::Path) -> anyhow::Result<[u8; 
     let mut key = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut key);
     std::fs::write(&path, STANDARD.encode(key))?;
-    // Klíč dešifruje Apple ID heslo + session — jen pro vlastníka (0600).
+    // The key decrypts the Apple ID password + session — owner-only (0600).
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

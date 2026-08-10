@@ -1,70 +1,70 @@
-# Architektura
+# Architecture
 
-## Přehled toku
+## Flow overview
 
 ```
-┌─────────────┐   upload IPA, 2FA, správa   ┌──────────────────────────────┐
-│  prohlížeč  │ ──────────────────────────► │  homesign server (Docker)    │
-└─────────────┘         web UI              │                              │
+┌─────────────┐ upload IPA, 2FA, management ┌──────────────────────────────┐
+│   browser   │ ──────────────────────────► │  homesign server (Docker)    │
+└─────────────┘          web UI             │                              │
                                             │  axum web UI + REST API      │
-┌─────────────┐   katalog, "nainstaluj"     │  SQLite (stav, fronty)       │
+┌─────────────┐   catalog, "install"        │  SQLite (state, queues)      │
 │  store app  │ ──────────────────────────► │  signer (zsign/rcodesign)    │
-│  (iPad)     │ ◄────────────────────────── │  installer (idevice tunel)   │
-└─────────────┘   instalace po Wi-Fi        │  scheduler (refresh ~6 dní)  │
+│   (iPad)    │ ◄────────────────────────── │  installer (idevice tunnel)  │
+└─────────────┘   installation over Wi-Fi   │  scheduler (refresh ~6 days) │
                                             └──────────────┬───────────────┘
-┌─────────────┐  jednorázové USB párování                  │
+┌─────────────┐  one-time USB pairing                      │
 │  cli (Mac/  │ ─────────────────────────► pairing file    │ anisette
-│  Linux)     │                                            ▼
+│   Linux)    │                                            ▼
 └─────────────┘                             ┌──────────────────────────────┐
                                             │  omnisette sidecar (Docker)  │
                                             └──────────────────────────────┘
 ```
 
-## Klíčová rozhodnutí
+## Key decisions
 
-1. **Refresh iniciuje server, ne iOS appka.** Známý problém AltStore/SideStore: iOS škrtí Background App Refresh, takže on-device refresh nespolehlivě běží a appky po 7 dnech umírají. Server má cron, běží pořád a iPad jen musí být na dosažitelné síti. Store appka nemusí na pozadí dělat vůbec nic.
-2. **Rust na serveru** — celý těžký stack existuje v Rustu s kompatibilními licencemi:
-   - [`jkcoxson/idevice`](https://github.com/jkcoxson/idevice) (MIT) — lockdown, AFC, installation_proxy, **RemoteXPC tunel pro iOS 17+**
-   - [`SideStore/apple-private-apis`](https://github.com/SideStore/apple-private-apis) (MPL-2.0) — GrandSlam/SRP auth k Apple ID, Developer Services API
-   - podepisování: `zsign` (MIT, C++) nebo `rcodesign` z apple-platform-rs — rozhodnout v M2
-3. **Anisette jako sidecar** (`SideStore/omnisette-server`) — vlastní kód se ho nedotýká, jen HTTP. Žádná licenční kontaminace, a když ho Apple rozbije, mění se jen image.
-4. **Žádný kód z AltStore/SideStore appek** (AGPL) — jen inspirace chováním.
+1. **The refresh is initiated by the server, not the iOS app.** A known AltStore/SideStore problem: iOS throttles Background App Refresh, so the on-device refresh runs unreliably and apps die after 7 days. The server has a cron, runs all the time, and the iPad only needs to be on a reachable network. The store app doesn't have to do anything in the background at all.
+2. **Rust on the server** — the entire heavy stack exists in Rust with compatible licenses:
+   - [`jkcoxson/idevice`](https://github.com/jkcoxson/idevice) (MIT) — lockdown, AFC, installation_proxy, **RemoteXPC tunnel for iOS 17+**
+   - [`SideStore/apple-private-apis`](https://github.com/SideStore/apple-private-apis) (MPL-2.0) — GrandSlam/SRP auth to the Apple ID, Developer Services API
+   - signing: `zsign` (MIT, C++) or `rcodesign` from apple-platform-rs — to be decided in M2
+3. **Anisette as a sidecar** (`SideStore/omnisette-server`) — our own code never touches it, just HTTP. No license contamination, and when Apple breaks it, only the image changes.
+4. **No code from the AltStore/SideStore apps** (AGPL) — only behavioral inspiration.
 
-## Toky
+## Flows
 
-### Bootstrap (jednorázově, Mac/Linux + USB)
-1. `cli pair` — přes USB vytvoří pairing file, zapne Wi-Fi connections, nahraje pairing na server.
-2. Web UI: přihlášení Apple ID (SRP + 2FA prompt), server získá certifikát + tým.
-3. Server podepíše store appku a nainstaluje ji na iPad po síti.
+### Bootstrap (one-time, Mac/Linux + USB)
+1. `cli pair` — over USB creates the pairing file, enables Wi-Fi connections, uploads the pairing file to the server.
+2. Web UI: Apple ID sign-in (SRP + 2FA prompt), the server obtains the certificate + team.
+3. The server signs the store app and installs it on the iPad over the network.
 
-### Instalace appky
-1. IPA se nahraje přes web UI (nebo vybere ve store appce z katalogu).
-2. Server: rozbalí → přepíše bundle ID na vlastní App ID → vygeneruje/stáhne provisioning profil → podepíše (včetně nested frameworků a extensions) → přepočítá CodeResources.
-3. Server naváže RemoteXPC tunel na iPad (pairing file, CoreDevice), AFC upload do PublicStaging, `installation_proxy` install.
+### Installing an app
+1. The IPA is uploaded via the web UI (or picked from the catalog in the store app).
+2. Server: unpacks → rewrites the bundle ID to its own App ID → generates/downloads a provisioning profile → signs (including nested frameworks and extensions) → recomputes CodeResources.
+3. The server establishes a RemoteXPC tunnel to the iPad (pairing file, CoreDevice), AFC upload into PublicStaging, `installation_proxy` install.
 
-### Refresh (automaticky)
-- Scheduler drží pro každou nainstalovanou appku expiraci profilu.
-- ~den 6: server přepodepíše a přeinstaluje (upgrade zachovává data appky).
-- iPad nedosažitelný → retry s backoffem + notifikace do store appky / web UI.
-- Refreshuje se i samotná store appka.
+### Refresh (automatic)
+- The scheduler tracks the profile expiration for each installed app.
+- Around day 6: the server re-signs and reinstalls (upgrade preserves the app's data).
+- iPad unreachable → retry with backoff + notification to the store app / web UI.
+- The store app itself is refreshed too.
 
-## Omezení free účtu
+## Free account limits
 
-- 3 aktivní appky na zařízení (1 spotřebuje store) — server hlídá sloty.
-- 10 nových App ID / 7 dní — App ID se recyklují (mapování bundle → App ID v DB).
-- Profily 7 dní — viz refresh.
-- 2FA session vyprší (~měsíc i dřív): server pošle notifikaci, kód se zadá ve web UI.
+- 3 active apps per device (1 consumed by the store) — the server tracks the slots.
+- 10 new App IDs / 7 days — App IDs are recycled (bundle → App ID mapping in the DB).
+- 7-day profiles — see refresh.
+- The 2FA session expires (~a month, sometimes sooner): the server sends a notification, the code is entered in the web UI.
 
-## Bezpečnost
+## Security
 
-- Apple ID credentials + session tokeny žijí jen na serveru (šifrované at rest, klíč mimo DB).
-- Web UI za autentizací; server je určen jen do domácí sítě / za Tailscale, ne na veřejný internet.
+- Apple ID credentials + session tokens live only on the server (encrypted at rest, the key kept outside the DB).
+- Web UI behind authentication; the server is meant only for the home network / behind Tailscale, not for the public internet.
 
-## Milníky
+## Milestones
 
-- **M1 — tunel a instalace:** cli párování, server umí přes idevice nainstalovat *už podepsanou* IPA po síti. Ověření: ruční install na iPad.
-- **M2 — podepisování:** Apple ID auth (anisette sidecar), registrace zařízení, App ID, profil, resign IPA. Ověření: server podepíše a nainstaluje libovolnou IPA.
-- **M3 — web UI + persistence:** upload, seznam appek/zařízení, 2FA flow, SQLite.
-- **M4 — refresh scheduler:** automatické přepodepsání, retry, hlídání slotů a App ID limitů.
-- **M5 — store appka:** SwiftUI katalog, instalace tapnutím, stav expirace, notifikace.
-- **M6 — packaging:** multi-arch Docker image (amd64/arm64), compose, dokumentace setupu.
+- **M1 — tunnel and installation:** cli pairing, the server can install an *already-signed* IPA over the network via idevice. Verification: manual install onto the iPad.
+- **M2 — signing:** Apple ID auth (anisette sidecar), device registration, App ID, profile, resign IPA. Verification: the server signs and installs an arbitrary IPA.
+- **M3 — web UI + persistence:** upload, list of apps/devices, 2FA flow, SQLite.
+- **M4 — refresh scheduler:** automatic re-signing, retry, tracking of slots and App ID limits.
+- **M5 — store app:** SwiftUI catalog, install with a tap, expiration status, notifications.
+- **M6 — packaging:** multi-arch Docker image (amd64/arm64), compose, setup documentation.

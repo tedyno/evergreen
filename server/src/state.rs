@@ -1,4 +1,4 @@
-//! Sdílený stav aplikace předávaný do handlerů.
+//! Shared application state passed into the handlers.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -13,9 +13,9 @@ use crate::config::Config;
 pub struct AppState {
     pub cfg: Arc<Config>,
     pub db: SqlitePool,
-    /// Apple ID klient — drží přihlašovací stav mezi requesty (2FA flow).
+    /// Apple ID client — holds the login state across requests (2FA flow).
     pub apple: Arc<AppleClient>,
-    /// Abort handles běžících úloh — pro zrušení z UI.
+    /// Abort handles of running jobs — for cancellation from the UI.
     pub running_jobs: Arc<Mutex<HashMap<i64, AbortHandle>>>,
 }
 

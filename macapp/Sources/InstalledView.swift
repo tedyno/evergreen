@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Přehled nainstalovaných appek: kdy podepsáno, kdy vyprší profil, ruční resign.
+/// Overview of installed apps: when signed, when the profile expires, manual resign.
 struct InstalledView: View {
     @EnvironmentObject var state: AppState
 

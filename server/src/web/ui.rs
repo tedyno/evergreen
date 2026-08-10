@@ -1,4 +1,4 @@
-//! Embedded web UI — jedna stránka, vanilla JS proti REST API.
+//! Embedded web UI — a single page, vanilla JS against the REST API.
 
 use axum::response::Html;
 
@@ -77,7 +77,7 @@ const INDEX: &str = r####"<!doctype html>
   <section id="tab-devices" hidden>
     <div class="card">
       <h2>Spárovaná zařízení</h2>
-      <p class="muted">Zařízení se přidávají přes CLI: <code>homesign-cli pair --server http://TENTO_SERVER:8080</code> s iPadem připojeným přes USB.</p>
+      <p class="muted">Zařízení spáruješ v appce Evergreen (Zařízení → Spárovat iPad) s iPadem připojeným přes USB.</p>
       <div id="devices"></div>
     </div>
   </section>
@@ -105,7 +105,7 @@ const api = async (path, opts={}) => {
 };
 const esc = s => (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-// taby
+// tabs
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active', x===b));
   ['apps','devices','jobs','account'].forEach(t=>$('#tab-'+t).hidden = t!==b.dataset.tab);

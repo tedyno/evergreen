@@ -1,4 +1,4 @@
-//! Práce s IPA: uložení nahraného souboru + extrakce metadat z Info.plist.
+//! Working with IPAs: storing the uploaded file + extracting metadata from Info.plist.
 
 use std::io::Read;
 
@@ -6,7 +6,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::Ipa;
 use crate::state::AppState;
 
-/// Metadata vytažená z `Payload/*.app/Info.plist`.
+/// Metadata extracted from `Payload/*.app/Info.plist`.
 #[derive(Debug, Default)]
 pub struct IpaMeta {
     pub bundle_id: String,
@@ -15,7 +15,7 @@ pub struct IpaMeta {
     pub icon: Option<Vec<u8>>,
 }
 
-/// Uloží nahrané IPA na disk, naparsuje metadata a zapíše do DB.
+/// Stores the uploaded IPA on disk, parses its metadata and writes it into the DB.
 pub async fn store_uploaded(st: &AppState, filename: &str, data: &[u8]) -> AppResult<Ipa> {
     let id = uuid::Uuid::new_v4().to_string();
     let safe_name = sanitize(filename);
@@ -70,12 +70,12 @@ pub async fn store_uploaded(st: &AppState, filename: &str, data: &[u8]) -> AppRe
     Ok(ipa)
 }
 
-/// Naparsuje Info.plist hlavní appky uvnitř IPA (zip).
+/// Parses the main app's Info.plist inside the IPA (zip).
 pub fn parse_meta(data: &[u8]) -> Result<IpaMeta, String> {
     let reader = std::io::Cursor::new(data);
     let mut zip = zip::ZipArchive::new(reader).map_err(|e| format!("není platný zip: {e}"))?;
 
-    // Najdi Payload/<App>.app/Info.plist (nejkratší cesta = kořenový bundle).
+    // Find Payload/<App>.app/Info.plist (the shortest path = the root bundle).
     let mut info_name: Option<String> = None;
     for i in 0..zip.len() {
         let name = zip.by_index(i).map_err(|e| e.to_string())?.name().to_string();
@@ -113,7 +113,7 @@ pub fn parse_meta(data: &[u8]) -> Result<IpaMeta, String> {
         .and_then(|v| v.as_string())
         .map(|s| s.to_string());
 
-    // Ikona: nejdřív zkusíme první CFBundleIcons soubor, jinak přeskočíme.
+    // Icon: first try the first CFBundleIcons file, otherwise skip.
     let app_dir = info_name.trim_end_matches("Info.plist");
     let icon = extract_icon(&mut zip, app_dir, dict);
 
@@ -121,7 +121,7 @@ pub fn parse_meta(data: &[u8]) -> Result<IpaMeta, String> {
 }
 
 fn is_root_info_plist(name: &str) -> bool {
-    // Payload/Foo.app/Info.plist — ne v .appex ani nested frameworku.
+    // Payload/Foo.app/Info.plist — not in a .appex or a nested framework.
     let parts: Vec<&str> = name.split('/').collect();
     parts.len() == 3
         && parts[0] == "Payload"
@@ -149,7 +149,7 @@ fn extract_icon(
             }
         }
     }
-    // Zkus varianty jmen ikon (@2x, @3x).
+    // Try the icon name variants (@2x, @3x).
     for base in candidates.iter().rev() {
         for suffix in ["@3x.png", "@2x.png", ".png", "@2x~ipad.png"] {
             let path = format!("{app_dir}{base}{suffix}");

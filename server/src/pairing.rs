@@ -1,8 +1,8 @@
-//! Párování iPadu přes USB — přímo v serveru (běží na macOS uvnitř Mac appky),
-//! takže není potřeba žádné CLI. Appka volá jen REST endpoint.
+//! Pairing an iPad over USB — directly in the server (which runs on macOS inside the
+//! Mac app), so no CLI is needed. The app only calls a REST endpoint.
 //!
-//! Krok navíc proti holému párování: po zapnutí Wi-Fi connections dohledáme IP
-//! iPadu v ARP tabulce podle jeho Wi-Fi MAC, ať ji uživatel nemusí zadávat ručně.
+//! One extra step over bare pairing: after enabling Wi-Fi connections we look up the
+//! iPad's IP in the ARP table by its Wi-Fi MAC, so the user doesn't have to enter it manually.
 
 use std::net::IpAddr;
 use std::str::FromStr;
@@ -13,7 +13,7 @@ use idevice::lockdown::LockdownClient;
 use idevice::usbmuxd::{Connection, UsbmuxdAddr, UsbmuxdConnection};
 use idevice::IdeviceService;
 
-/// Výsledek párování pro API.
+/// Pairing result for the API.
 #[derive(Debug, serde::Serialize)]
 pub struct PairResult {
     pub udid: String,
@@ -29,7 +29,7 @@ async fn usbmuxd() -> Result<UsbmuxdConnection> {
         .map_err(|e| anyhow!("nelze se připojit k usbmuxd (běží Apple Mobile Device?): {e:?}"))
 }
 
-/// UDID prvního připojeného USB zařízení (nebo všechna).
+/// UDID of the first connected USB device (or all of them).
 pub async fn list_usb() -> Result<Vec<String>> {
     let mut u = usbmuxd().await?;
     let devs = u.get_devices().await.map_err(|e| anyhow!("{e:?}"))?;
@@ -40,8 +40,8 @@ pub async fn list_usb() -> Result<Vec<String>> {
         .collect())
 }
 
-/// Spáruje připojený iPad, zapne Wi-Fi connections, zjistí IP a vrátí metadata
-/// + serializovaný pairing file (ať ho volající uloží).
+/// Pairs the connected iPad, enables Wi-Fi connections, discovers the IP and returns
+/// metadata + the serialized pairing file (for the caller to store).
 pub async fn pair_usb(udid: Option<&str>) -> Result<(PairResult, Vec<u8>)> {
     let mut u = usbmuxd().await?;
     let dev = match udid {
@@ -60,7 +60,7 @@ pub async fn pair_usb(udid: Option<&str>) -> Result<(PairResult, Vec<u8>)> {
         .await
         .map_err(|e| anyhow!("lockdown: {e:?}"))?;
 
-    // Spáruj.
+    // Pair.
     let host_id = uuid::Uuid::new_v4().to_string().to_uppercase();
     let buid = u.get_buid().await.map_err(|e| anyhow!("buid: {e:?}"))?;
     let mut pairing_file = lockdown
@@ -73,7 +73,7 @@ pub async fn pair_usb(udid: Option<&str>) -> Result<(PairResult, Vec<u8>)> {
         .await
         .map_err(|e| anyhow!("test pairing filu selhal: {e:?}"))?;
 
-    // Zapni Wi-Fi connections, ať server dosáhne na iPad bez kabelu.
+    // Enable Wi-Fi connections so the server can reach the iPad without a cable.
     if let Err(e) = lockdown
         .set_value(
             "EnableWifiConnections",
@@ -93,7 +93,7 @@ pub async fn pair_usb(udid: Option<&str>) -> Result<(PairResult, Vec<u8>)> {
     let serialized = pairing_file.serialize().map_err(|e| anyhow!("serialize: {e:?}"))?;
     let _ = u.save_pair_record(&dev.udid, serialized.clone()).await;
 
-    // Auto-detekce IP: primárně z usbmuxd (síťové zařízení), fallback ARP.
+    // IP auto-detection: primarily from usbmuxd (network device), ARP fallback.
     let address = discover_ip(&dev.udid, wifi_mac.as_deref()).await;
 
     Ok((
@@ -115,12 +115,12 @@ async fn get_str(lockdown: &mut LockdownClient, key: &str) -> Option<String> {
     }
 }
 
-/// Zjistí IPv4 iPadu po zapnutí Wi-Fi connections. Zdroje v pořadí spolehlivosti:
-/// 1) usbmuxd síťové zařízení (`Connection::Network`) — má IP přímo;
-/// 2) ARP podle Wi-Fi MAC — MAC buď známe z párování, nebo ji vytáhneme z Bonjoru
-///    (`_apple-mobdev2._tcp` inzeruje síťovou MAC iOS zařízení).
+/// Discovers the iPad's IPv4 after enabling Wi-Fi connections. Sources in order of reliability:
+/// 1) usbmuxd network device (`Connection::Network`) — has the IP directly;
+/// 2) ARP by Wi-Fi MAC — the MAC is either known from pairing, or we extract it from Bonjour
+///    (`_apple-mobdev2._tcp` advertises the iOS device's network MAC).
 async fn discover_ip(udid: &str, mac: Option<&str>) -> Option<String> {
-    // MAC k ARP: buď z párování, nebo z Bonjoru (síťová MAC iOS zařízení).
+    // MAC for ARP: either from pairing, or from Bonjour (the iOS device's network MAC).
     let mut macs: Vec<[u8; 6]> = mac.and_then(parse_mac).into_iter().collect();
     if macs.is_empty() {
         macs = bonjour_ios_macs().await;
@@ -135,7 +135,7 @@ async fn discover_ip(udid: &str, mac: Option<&str>) -> Option<String> {
                 return Some(ip);
             }
         }
-        // Po pár marných pokusech pobídni síť multicast pingem (naplní ARP).
+        // After a few fruitless attempts, nudge the network with a multicast ping (populates ARP).
         if attempt == 2 {
             let _ = tokio::process::Command::new("/sbin/ping")
                 .args(["-c", "2", "-t", "1", "224.0.0.1"])
@@ -147,8 +147,8 @@ async fn discover_ip(udid: &str, mac: Option<&str>) -> Option<String> {
     None
 }
 
-/// Wi-Fi MAC iOS zařízení inzerované přes Bonjour (`_apple-mobdev2._tcp`).
-/// Používá systémový `dns-sd` (spolehlivý, na rozdíl od mDNS knihoven v Rustu).
+/// Wi-Fi MACs of iOS devices advertised over Bonjour (`_apple-mobdev2._tcp`).
+/// Uses the system `dns-sd` (reliable, unlike the mDNS libraries in Rust).
 async fn bonjour_ios_macs() -> Vec<[u8; 6]> {
     use tokio::io::{AsyncBufReadExt, BufReader};
 
@@ -173,7 +173,7 @@ async fn bonjour_ios_macs() -> Vec<[u8; 6]> {
             line = lines.next_line() => {
                 match line {
                     Ok(Some(l)) => {
-                        // Instance name (poslední token) je "MAC@...".
+                        // The instance name (last token) is "MAC@...".
                         if let Some(inst) = l.split_whitespace().last() {
                             if let Some(mac_part) = inst.split('@').next() {
                                 if let Some(m) = parse_mac(mac_part) {
@@ -193,13 +193,13 @@ async fn bonjour_ios_macs() -> Vec<[u8; 6]> {
     macs
 }
 
-/// Znovu zjistí IP už spárovaného zařízení (bez nového párování) — pro tlačítko
-/// „Zjistit IP" u zařízení, které má neznámou adresu.
+/// Re-discovers the IP of an already-paired device (without re-pairing) — for the
+/// "Zjistit IP" button on a device with an unknown address.
 pub async fn detect_ip(udid: &str) -> Option<String> {
     discover_ip(udid, None).await
 }
 
-/// IP iPadu ze seznamu usbmuxd zařízení (síťové připojení pro daný UDID).
+/// The iPad's IP from the usbmuxd device list (network connection for the given UDID).
 async fn usbmux_network_ip(udid: &str) -> Option<String> {
     let mut u = usbmuxd().await.ok()?;
     let devs = u.get_devices().await.ok()?;
@@ -209,7 +209,7 @@ async fn usbmux_network_ip(udid: &str) -> Option<String> {
     })
 }
 
-/// MAC "aa:72:8d:a7:3e:1c" → bajty. Zvládá i tvar bez vedoucích nul (ARP output).
+/// MAC "aa:72:8d:a7:3e:1c" → bytes. Also handles the form without leading zeros (ARP output).
 fn parse_mac(s: &str) -> Option<[u8; 6]> {
     let parts: Vec<&str> = s.trim().split(':').collect();
     if parts.len() != 6 {
@@ -222,12 +222,12 @@ fn parse_mac(s: &str) -> Option<[u8; 6]> {
     Some(out)
 }
 
-/// Najde IPv4 pro danou MAC v `arp -an` (bajtové porovnání kvůli formátu nul).
+/// Finds the IPv4 for the given MAC in `arp -an` (byte comparison because of the zero formatting).
 async fn arp_lookup(target: &[u8; 6]) -> Option<String> {
     let out = tokio::process::Command::new("/usr/sbin/arp").arg("-an").output().await.ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     for line in text.lines() {
-        // Formát: "? (10.0.1.105) at aa:72:8d:a7:3e:1c on en0 ifscope [ethernet]"
+        // Format: "? (10.0.1.105) at aa:72:8d:a7:3e:1c on en0 ifscope [ethernet]"
         let (Some(l), Some(r)) = (line.find('('), line.find(')')) else { continue };
         let ip = &line[l + 1..r];
         if IpAddr::from_str(ip).map(|a| a.is_ipv4()).unwrap_or(false) {

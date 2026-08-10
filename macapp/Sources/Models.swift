@@ -1,6 +1,6 @@
 import Foundation
 
-// DTO zrcadlící server (`server/src/models.rs` + `web/api.rs`).
+// DTOs mirroring the server (`server/src/models.rs` + `web/api.rs`).
 
 struct ServerStatus: Decodable {
     let name: String
@@ -81,7 +81,7 @@ struct HSJob: Decodable, Identifiable {
 
     var isActive: Bool { status == "running" || status == "queued" }
 
-    /// Čas vytvoření jako Date.
+    /// Creation time as a Date.
     var createdDate: Date? { HSJob.parseDate(createdAt) }
     var updatedDate: Date? { HSJob.parseDate(updatedAt) }
 
@@ -117,7 +117,7 @@ struct Installation: Decodable, Identifiable {
         case lastInstalled = "last_installed"
     }
 
-    /// Počet celých dní do vypršení profilu (nil = neznámo).
+    /// Number of whole days until the profile expires (nil = unknown).
     var daysUntilExpiry: Int? {
         guard let s = profileExpires else { return nil }
         let fmt = ISO8601DateFormatter()
@@ -153,7 +153,7 @@ struct AppIdEntry: Decodable, Identifiable {
     }
 }
 
-/// Skutečný stav App ID na Apple účtu (z Developer Services).
+/// The actual App ID state on the Apple account (from Developer Services).
 struct AppIdInfo: Decodable {
     let teamId: String
     let count: Int
@@ -167,7 +167,7 @@ struct AppIdInfo: Decodable {
     }
 }
 
-/// Odpověď na login / 2FA.
+/// Response to login / 2FA.
 struct AuthOutcome: Decodable {
     let state: String        // "logged_in" | "needs_2fa"
     let teamId: String?

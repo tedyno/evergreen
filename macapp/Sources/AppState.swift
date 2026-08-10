@@ -1,15 +1,15 @@
 import Foundation
 import SwiftUI
 
-/// Sdílený stav appky: konfigurace serveru, načtená data, polling úloh.
+/// Shared app state: server configuration, loaded data, job polling.
 @MainActor
 final class AppState: ObservableObject {
-    /// Používat vlastní embedded server (default), nebo se připojit na vzdálený?
+    /// Use the embedded server (default), or connect to a remote one?
     @AppStorage("useLocalServer") var useLocalServer: Bool = true
-    /// Adresa vzdáleného serveru (jen když useLocalServer == false).
+    /// Address of the remote server (only when useLocalServer == false).
     @AppStorage("remoteServerURL") var remoteServerURLString: String = "http://localhost:8080"
 
-    /// Adresa, na kterou klient aktuálně míří.
+    /// The address the client is currently pointing at.
     @Published private(set) var activeBaseURL: URL
 
     @Published var status: ServerStatus?
@@ -36,26 +36,26 @@ final class AppState: ObservableObject {
 
     var baseURL: URL { activeBaseURL }
 
-    /// Synchronní URL ikony IPA pro `AsyncImage`.
+    /// Synchronous IPA icon URL for `AsyncImage`.
     func iconURLSync(for ipa: Ipa) -> URL {
         activeBaseURL.appendingPathComponent("icon/\(ipa.id)")
     }
 
-    /// Přesměruje klienta na danou adresu a načte data.
+    /// Redirects the client to the given address and loads data.
     func activate(baseURL url: URL) async {
         activeBaseURL = url
         await client.setBaseURL(url)
         await refreshAll()
     }
 
-    /// Přepne na vzdálený server podle uložené adresy.
+    /// Switches to the remote server using the stored address.
     func switchToRemote() async {
         useLocalServer = false
         let url = URL(string: remoteServerURLString) ?? URL(string: "http://localhost:8080")!
         await activate(baseURL: url)
     }
 
-    // MARK: - načítání
+    // MARK: - loading
 
     func refreshAll() async {
         await refreshStatus()
@@ -70,7 +70,7 @@ final class AppState: ObservableObject {
         if let i = try? await client.installations() { installations = i }
     }
 
-    /// Běží nějaká úloha? (pro loading indikátor v menu)
+    /// Is any job running? (for the loading indicator in the menu)
     var hasActiveJob: Bool { jobs.contains { $0.isActive } }
 
     func cancelJob(_ id: Int64) async {
@@ -80,13 +80,13 @@ final class AppState: ObservableObject {
 
     private var lastAppIdAttempt: Date?
 
-    /// Načte skutečný stav App ID z Apple účtu (jen když jsme přihlášeni).
-    /// Ochrana: neťukat Apple token endpoint často — jinak hrozí throttle -22411.
+    /// Loads the actual App ID state from the Apple account (only when logged in).
+    /// Safeguard: don't hit the Apple token endpoint often — otherwise throttle -22411 may occur.
     func refreshAppIds(force: Bool = false) async {
         guard account?.authState == "logged_in" else { appIdInfo = nil; return }
-        // Máme-li data, znovu nenačítáme automaticky. Retry jen ručně (force).
+        // If we already have data, don't reload automatically. Retry only manually (force).
         if appIdInfo != nil && !force { return }
-        // Nezkoušej častěji než jednou za 5 minut (kromě ručního force).
+        // Don't retry more often than once every 5 minutes (except on manual force).
         if let last = lastAppIdAttempt, !force, Date().timeIntervalSince(last) < 300 { return }
         lastAppIdAttempt = Date()
         appIdLoading = true
@@ -120,7 +120,7 @@ final class AppState: ObservableObject {
         if let j = try? await client.jobs() { jobs = j }
     }
 
-    // MARK: - akce
+    // MARK: - actions
 
     func uploadIpa(fileURL: URL) async throws {
         uploadProgress = 0
@@ -158,7 +158,7 @@ final class AppState: ObservableObject {
         await refreshJobs()
     }
 
-    /// Přepodepsat + přeinstalovat už nainstalovanou appku (ruční refresh).
+    /// Re-sign + reinstall an already installed app (manual refresh).
     func resign(ipaId: String, deviceUdid: String) async throws {
         _ = try await client.install(deviceUdid: deviceUdid, ipaId: ipaId)
         await refreshJobs()
@@ -183,7 +183,7 @@ final class AppState: ObservableObject {
 
     // MARK: - polling
 
-    /// Spustí periodické načítání úloh (běží dokud appka žije).
+    /// Starts periodic job loading (runs for the lifetime of the app).
     func startPolling() {
         guard pollTask == nil else { return }
         pollTask = Task { [weak self] in

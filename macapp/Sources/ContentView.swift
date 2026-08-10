@@ -63,7 +63,7 @@ struct ContentView: View {
     }
 }
 
-/// Spodní lišta sidebaru: stav spojení + verze serveru.
+/// Bottom bar of the sidebar: connection status + server version.
 struct ConnectionStatusBar: View {
     @EnvironmentObject var state: AppState
 

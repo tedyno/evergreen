@@ -1,7 +1,7 @@
 import Foundation
 
-/// Spouští a hlídá přibalený `homesign-server` jako podproces. Umožňuje mít
-/// „všechno v Mac appce" — žádný Docker, žádný ruční terminál.
+/// Launches and supervises the bundled `homesign-server` as a subprocess. Lets you keep
+/// "everything inside the Mac app" — no Docker, no manual terminal.
 @MainActor
 final class ServerController: ObservableObject {
     enum State: Equatable {
@@ -13,7 +13,7 @@ final class ServerController: ObservableObject {
 
     @Published private(set) var state: State = .stopped
 
-    /// Port, na kterém lokální server poslouchá (jen loopback).
+    /// Port the local server listens on (loopback only).
     let port: Int = 8080
 
     private var process: Process?
@@ -27,7 +27,7 @@ final class ServerController: ObservableObject {
         logURL = Self.appSupportDir().appendingPathComponent("server.log")
     }
 
-    // MARK: - cesty
+    // MARK: - paths
 
     static func appSupportDir() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
@@ -36,14 +36,14 @@ final class ServerController: ObservableObject {
         return dir
     }
 
-    /// Přibalená binárka serveru (v Resources appky).
+    /// The bundled server binary (in the app's Resources).
     private func serverBinaryURL() -> URL? {
         Bundle.main.url(forResource: "homesign-server", withExtension: nil)
     }
 
     // MARK: - lifecycle
 
-    /// Spustí server (pokud už neběží) a počká, až odpoví health-check.
+    /// Starts the server (if not already running) and waits until the health check responds.
     func startIfNeeded() async {
         guard state != .running && state != .starting else { return }
         guard let binary = serverBinaryURL() else {
@@ -59,10 +59,10 @@ final class ServerController: ObservableObject {
             "HOMESIGN_DATA": dataDir.path,
             "HOMESIGN_BIND": "127.0.0.1:\(port)",
             "RUST_LOG": "info",
-            // ANISETTE_URL neuvádíme — na macOS vyhraje nativní AOSKit provider.
+            // We don't set ANISETTE_URL — on macOS the native AOSKit provider wins.
         ]
 
-        // Logy serveru přesměruj do souboru.
+        // Redirect the server's logs to a file.
         FileManager.default.createFile(atPath: logURL.path, contents: nil)
         if let handle = try? FileHandle(forWritingTo: logURL) {
             proc.standardOutput = handle
@@ -86,7 +86,7 @@ final class ServerController: ObservableObject {
             return
         }
 
-        // Health-check: čekej až server odpoví na /api/status.
+        // Health check: wait until the server responds on /api/status.
         if await waitForHealth(timeout: 15) {
             state = .running
         } else {
@@ -110,7 +110,7 @@ final class ServerController: ObservableObject {
         return false
     }
 
-    /// Zastaví server (SIGTERM). Volá se při ukončení appky.
+    /// Stops the server (SIGTERM). Called when the app terminates.
     func stop() {
         guard let proc = process, proc.isRunning else { return }
         proc.terminationHandler = nil

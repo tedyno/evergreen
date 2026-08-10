@@ -1,8 +1,8 @@
-//! Apple ID účet a Developer Services.
+//! Apple ID account and Developer Services.
 //!
-//! Auth (GrandSlam/GSA + anisette) je hotové přes `icloud_auth`. Developer Portal
-//! API (registrace zařízení, cert, App ID, profil) žádná Rust knihovna neposkytuje
-//! — je v `devportal` a je to hlavní kus M2, testovatelný až s reálným účtem.
+//! Auth (GrandSlam/GSA + anisette) is done via `icloud_auth`. No Rust library provides
+//! the Developer Portal API (device registration, cert, App ID, profile) — it lives in
+//! `devportal` and is the main piece of M2, only testable with a real account.
 
 pub mod devportal;
 
@@ -11,8 +11,8 @@ use tokio::sync::Mutex;
 use icloud_auth::{AppleAccount, LoginState};
 use omnisette::AnisetteConfiguration;
 
-/// Dešifruje Apple GrandSlam GCM blob formátu "XYZ" + IV(16) + ciphertext + tag(16)
-/// pomocí session klíče (AES-256-GCM, 16bajtový nonce).
+/// Decrypts an Apple GrandSlam GCM blob of the format "XYZ" + IV(16) + ciphertext + tag(16)
+/// using the session key (AES-256-GCM, 16-byte nonce).
 fn decrypt_gcm_xyz(sk: &[u8], et: &[u8]) -> Result<Vec<u8>, String> {
     use aes_gcm::aead::{Aead, KeyInit};
     use aes_gcm::aes::Aes256;
@@ -30,13 +30,13 @@ fn decrypt_gcm_xyz(sk: &[u8], et: &[u8]) -> Result<Vec<u8>, String> {
     let cipher = Aes256Gcm16::new(sk.into());
     let iv = &et[3..19];
     let ct_and_tag = &et[19..];
-    // AAD = 3bajtová hlavička "XYZ".
+    // AAD = the 3-byte "XYZ" header.
     cipher
         .decrypt(iv.into(), Payload { msg: ct_and_tag, aad: &et[..3] })
         .map_err(|e| format!("{e}"))
 }
 
-/// Auth materiál pro Developer Services (developerservices2.apple.com).
+/// Auth material for Developer Services (developerservices2.apple.com).
 pub struct XcodeAuth {
     pub dsid: String,
     pub token: String,
@@ -51,7 +51,7 @@ impl XcodeAuth {
     }
 }
 
-/// Výsledek pokusu o přihlášení.
+/// Result of a login attempt.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(tag = "state")]
 pub enum LoginOutcome {
@@ -67,15 +67,15 @@ struct AuthInner {
     apple_id: Option<String>,
     password: Option<String>,
     logged_in: bool,
-    /// Cache Xcode app tokenu (platí ~rok) — ať netlučeme GSA při každém requestu
-    /// (Apple jinak throttluje chybou -22411).
+    /// Cache of the Xcode app token (valid ~a year) — so we don't hit GSA on every request
+    /// (otherwise Apple throttles with error -22411).
     xcode_token: Option<(String, i64)>, // (token, expiry_ms)
 }
 
 pub struct AppleClient {
     anisette_url: String,
     inner: Mutex<AuthInner>,
-    /// Kam persistovat Xcode token (přežije restart → neťukáme GSA → žádný throttle).
+    /// Where to persist the Xcode token (survives restart → we don't touch GSA → no throttle).
     token_path: std::path::PathBuf,
 }
 
@@ -90,12 +90,12 @@ impl AppleClient {
         client
     }
 
-    /// Načte perzistovaný Xcode token z disku do cache (formát "expiry\ntoken").
+    /// Loads the persisted Xcode token from disk into the cache (format "expiry\ntoken").
     fn load_persisted_token(&self) {
         if let Ok(s) = std::fs::read_to_string(&self.token_path) {
             if let Some((exp, tok)) = s.split_once('\n') {
                 if let Ok(exp) = exp.trim().parse::<i64>() {
-                    // inner ještě není zamčené nikým jiným (konstruktor).
+                    // inner is not yet locked by anyone else (constructor).
                     if let Ok(mut inner) = self.inner.try_lock() {
                         inner.xcode_token = Some((tok.to_string(), exp));
                     }
@@ -112,8 +112,8 @@ impl AppleClient {
         AnisetteConfiguration::new().set_anisette_url(self.anisette_url.clone())
     }
 
-    /// Krok 1: přihlášení jménem+heslem. Když účet vyžaduje 2FA, pošle kód na
-    /// důvěryhodná zařízení a vrátí `Needs2FA`.
+    /// Step 1: log in with username+password. If the account requires 2FA, it sends the
+    /// code to the trusted devices and returns `Needs2FA`.
     pub async fn login(&self, apple_id: &str, password: &str) -> anyhow::Result<LoginOutcome> {
         let mut account = AppleAccount::new(self.anisette_config())
             .await
@@ -135,7 +135,7 @@ impl AppleClient {
                 Ok(LoginOutcome::LoggedIn { team_id: None })
             }
             LoginState::NeedsDevice2FA | LoginState::Needs2FAVerification => {
-                // Vyžádej kód na důvěryhodná zařízení.
+                // Request the code on the trusted devices.
                 account
                     .send_2fa_to_devices()
                     .await
@@ -150,7 +150,7 @@ impl AppleClient {
         }
     }
 
-    /// Krok 2: ověření 2FA kódu a dokončení přihlášení.
+    /// Step 2: verify the 2FA code and complete the login.
     pub async fn submit_2fa(&self, code: &str) -> anyhow::Result<LoginOutcome> {
         let mut inner = self.inner.lock().await;
         let (apple_id, password) = match (inner.apple_id.clone(), inner.password.clone()) {
@@ -167,7 +167,7 @@ impl AppleClient {
             .await
             .map_err(|e| anyhow::anyhow!("ověření 2fa: {e:?}"))?;
 
-        // Po ověření je potřeba zopakovat login, aby se dokončil.
+        // After verification the login needs to be repeated to complete it.
         let state = account
             .login_email_pass(&apple_id, &password)
             .await
@@ -191,8 +191,8 @@ impl AppleClient {
         *inner = AuthInner::default();
     }
 
-    /// Serializuje přihlášenou session (spd: adsid, GsIdmsToken, …) jako plist XML,
-    /// ať přežije restart serveru. None, když nejsme přihlášení.
+    /// Serializes the logged-in session (spd: adsid, GsIdmsToken, …) as a plist XML,
+    /// so it survives a server restart. None if we are not logged in.
     pub async fn export_session(&self) -> Option<String> {
         let inner = self.inner.lock().await;
         let spd = inner.account.as_ref()?.spd.as_ref()?;
@@ -201,7 +201,7 @@ impl AppleClient {
         String::from_utf8(buf).ok()
     }
 
-    /// Obnoví přihlášení z uložené session (po restartu serveru), bez hesla/2FA.
+    /// Restores the login from a stored session (after a server restart), without password/2FA.
     pub async fn restore_session(&self, apple_id: String, session_xml: &str) -> anyhow::Result<()> {
         let spd: plist::Dictionary = plist::from_bytes(session_xml.as_bytes())
             .map_err(|e| anyhow::anyhow!("parse session: {e}"))?;
@@ -232,8 +232,8 @@ impl AppleClient {
         self.inner.lock().await.logged_in
     }
 
-    /// Auth materiál pro Developer Services: DSID + Xcode token + anisette hlavičky.
-    /// Token se cachuje (platí ~rok), ať Apple nethrottluje opakované GSA requesty.
+    /// Auth material for Developer Services: DSID + Xcode token + anisette headers.
+    /// The token is cached (valid ~a year) so Apple doesn't throttle repeated GSA requests.
     pub async fn xcode_auth(&self) -> anyhow::Result<XcodeAuth> {
         let mut inner = self.inner.lock().await;
         let account = inner
@@ -249,10 +249,10 @@ impl AppleClient {
             .ok_or_else(|| anyhow::anyhow!("chybí adsid"))?
             .to_string();
 
-        // Anisette hlavičky jsou časově citlivé → generuj čerstvé pokaždé.
+        // Anisette headers are time-sensitive → generate fresh ones every time.
         let anisette = account.get_anisette().await.base_headers.clone();
 
-        // Cache tokenu (s rezervou 1 h před expirací).
+        // Token cache (with a 1 h margin before expiration).
         let now_ms = chrono::Utc::now().timestamp_millis();
         if let Some((tok, exp)) = &inner.xcode_token {
             if *exp - 3_600_000 > now_ms {
@@ -291,7 +291,7 @@ impl AppleClient {
         Ok(XcodeAuth { dsid, token: xcode_token, anisette })
     }
 
-    /// Přehled App ID účtu (teamId + globální seznam) přes Developer Services.
+    /// Overview of the account's App IDs (teamId + global list) via Developer Services.
     pub async fn account_app_ids(
         &self,
     ) -> anyhow::Result<(String, Vec<devportal::AppIdEntry>)> {

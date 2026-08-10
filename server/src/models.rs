@@ -1,4 +1,4 @@
-//! Doménové typy zrcadlící tabulky v migrations/0001_init.sql.
+//! Domain types mirroring the tables in migrations/0001_init.sql.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -45,7 +45,7 @@ pub struct Installation {
 }
 
 impl Installation {
-    /// Za jak dlouho vyprší profil (None = neznámo / bez expirace).
+    /// When the profile expires (None = unknown / no expiration).
     pub fn expires_at(&self) -> Option<DateTime<Utc>> {
         self.profile_expires
             .as_deref()

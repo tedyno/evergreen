@@ -1,12 +1,12 @@
-//! Komunikace se zařízením přes idevice.
+//! Communication with the device via idevice.
 //!
-//! iOS 17+ vyžaduje RemoteXPC: navážeme CoreDeviceProxy tunel a přes *userspace*
-//! software tunel (žádný TUN/NET_ADMIN nepotřeba) uděláme RSD handshake a pustíme
-//! installation_proxy nad RSD transportem.
+//! iOS 17+ requires RemoteXPC: we establish a CoreDeviceProxy tunnel and, over a
+//! *userspace* software tunnel (no TUN/NET_ADMIN needed), perform the RSD handshake
+//! and run installation_proxy over the RSD transport.
 //!
-//! POZOR: reálná instalace se dá ověřit jen s připojeným zařízením — tenhle modul
-//! je proto plně testovatelný až ráno s iPadem. Struktura odpovídá ověřeným
-//! příkladům z idevice/tools (app_service.rs, ideviceinstaller.rs).
+//! NOTE: a real installation can only be verified with a connected device — this
+//! module is therefore only fully testable in the morning with the iPad. The
+//! structure mirrors the proven examples in idevice/tools (app_service.rs, ideviceinstaller.rs).
 
 use std::future::Future;
 use std::net::IpAddr;
@@ -28,7 +28,7 @@ use crate::models::Device;
 const PUBLIC_STAGING: &str = "PublicStaging";
 const UPLOAD_CHUNK: usize = 8 * 1024 * 1024; // 8 MB
 
-/// Síťový provider ze záznamu zařízení (IP + pairing file).
+/// Network provider from the device record (IP + pairing file).
 fn tcp_provider(device: &Device) -> anyhow::Result<TcpProvider> {
     let addr = device
         .address
@@ -45,10 +45,10 @@ fn tcp_provider(device: &Device) -> anyhow::Result<TcpProvider> {
     })
 }
 
-/// Vybere nejlepší dostupný transport: preferuj USB (na iOS 17+ funguje
-/// `CoreDeviceProxy` přes usbmux), jinak spadni na Wi-Fi (RemoteXPC).
+/// Picks the best available transport: prefer USB (on iOS 17+ `CoreDeviceProxy`
+/// works over usbmux), otherwise fall back to Wi-Fi (RemoteXPC).
 async fn best_provider(device: &Device) -> anyhow::Result<Box<dyn IdeviceProvider>> {
-    // USB, když je iPad připojený kabelem.
+    // USB, when the iPad is connected by cable.
     if let Ok(mut u) = UsbmuxdConnection::default().await {
         if let Ok(devs) = u.get_devices().await {
             if let Some(d) = devs
@@ -60,13 +60,13 @@ async fn best_provider(device: &Device) -> anyhow::Result<Box<dyn IdeviceProvide
             }
         }
     }
-    // Jinak Wi-Fi.
+    // Otherwise Wi-Fi.
     tracing::info!("instalace přes Wi-Fi ({:?})", device.address);
     Ok(Box::new(tcp_provider(device)?))
 }
 
-/// Nainstaluje (nebo upgraduje) už podepsané IPA na zařízení přes RemoteXPC tunel.
-/// Callback dostává (procenta 0–100 v rámci instalační fáze, textovou zprávu s MB).
+/// Installs (or upgrades) an already-signed IPA on the device over the RemoteXPC tunnel.
+/// The callback receives (percentage 0–100 within the install phase, a text message with MB).
 pub async fn install_signed<F, Fut>(
     device: &Device,
     signed_ipa: &Path,
@@ -79,8 +79,8 @@ where
     let bundle_id = read_ipa_bundle_id(signed_ipa).await?;
     let provider = best_provider(device).await?;
 
-    // Přímé AFC přes usbmux (bez software tunelu — ten na bulk transferu stalluje).
-    // AFC je klasická služba dostupná přes lockdown i na iOS 17+ přes USB.
+    // Direct AFC over usbmux (without the software tunnel — it stalls on bulk transfer).
+    // AFC is a classic service reachable via lockdown, even on iOS 17+ over USB.
     let total = tokio::fs::metadata(signed_ipa).await?.len();
     let total_mb = total / (1024 * 1024);
     let remote_path = format!("{PUBLIC_STAGING}/homesign.ipa");
@@ -107,13 +107,13 @@ where
             if n == 0 {
                 break;
             }
-            // write_entire = inherentní AFC write (posílá pakety a čte odpovědi),
-            // což aktivně pumpuje tunel — na rozdíl od AsyncWrite, který stalluje.
+            // write_entire = the native AFC write (sends packets and reads responses),
+            // which actively pumps the tunnel — unlike AsyncWrite, which stalls.
             fd.write_entire(&buf[..n])
                 .await
                 .map_err(|e| anyhow::anyhow!("AFC write: {e:?}"))?;
             sent += n as u64;
-            // Report ~každé 4 MB. Upload = 0–85 % instalační fáze.
+            // Report roughly every 4 MB. Upload = 0–85% of the install phase.
             if sent - last_report >= 4 * 1024 * 1024 || sent == total {
                 last_report = sent;
                 let pct = if total > 0 { sent * 85 / total } else { 0 };
@@ -124,7 +124,7 @@ where
         }
     }
 
-    // InstallationProxy Upgrade (zachová data appky) — klasicky přes usbmux.
+    // InstallationProxy Upgrade (preserves the app's data) — classically over usbmux.
     tracing::info!("installation_proxy connect (přímý)…");
     let mut inst = InstallationProxyClient::connect(provider.as_ref())
         .await
@@ -139,7 +139,7 @@ where
         move |(pct, _): (u64, ())| {
             let cb = cb.clone();
             async move {
-                // Instalace = 85–100 % instalační fáze.
+                // Installation = 85–100% of the install phase.
                 let mapped = 85 + pct * 15 / 100;
                 cb(mapped, format!("Instaluji na iPad… {pct} %")).await;
             }
@@ -152,15 +152,15 @@ where
     Ok(())
 }
 
-/// Přečte CFBundleIdentifier z `Payload/*.app/Info.plist` v IPA (jen malý entry,
-/// ne celý soubor).
+/// Reads CFBundleIdentifier from `Payload/*.app/Info.plist` in the IPA (just the
+/// small entry, not the whole file).
 async fn read_ipa_bundle_id(ipa: &Path) -> anyhow::Result<String> {
     let path = ipa.to_path_buf();
     tokio::task::spawn_blocking(move || {
         use std::io::Read;
         let f = std::fs::File::open(&path)?;
         let mut zip = zip::ZipArchive::new(f)?;
-        // Najdi kořenový Payload/<App>.app/Info.plist.
+        // Find the root Payload/<App>.app/Info.plist.
         let mut name: Option<String> = None;
         for i in 0..zip.len() {
             let n = zip.by_index(i)?.name().to_string();
@@ -183,7 +183,7 @@ async fn read_ipa_bundle_id(ipa: &Path) -> anyhow::Result<String> {
     .await?
 }
 
-/// Ověří, že pairing file funguje a zařízení je dosažitelné (health-check).
+/// Verifies that the pairing file works and the device is reachable (health-check).
 pub async fn ping(device: &Device) -> anyhow::Result<()> {
     let provider = best_provider(device).await?;
     let _proxy = CoreDeviceProxy::connect(provider.as_ref())

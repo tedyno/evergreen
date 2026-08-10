@@ -1,5 +1,5 @@
-//! Fronta úloh a worker. Install/refresh běží asynchronně, stav se streamuje do
-//! tabulky `job`, aby ho web UI mohlo pollovat a přežil restart serveru.
+//! Job queue and worker. Install/refresh run asynchronously; the state is streamed
+//! into the `job` table so the web UI can poll it and it survives a server restart.
 
 use crate::error::AppResult;
 use crate::models::{Device, Ipa, Job};
@@ -9,7 +9,7 @@ pub async fn enqueue_install(st: &AppState, device_udid: &str, ipa_id: &str) -> 
     enqueue(st, device_udid, ipa_id, "install").await
 }
 
-/// Zařadí úlohu daného druhu ('install' | 'refresh') — obojí je resign+instalace.
+/// Enqueues a job of the given kind ('install' | 'refresh') — both are resign+install.
 pub async fn enqueue(st: &AppState, device_udid: &str, ipa_id: &str, kind: &str) -> AppResult<Job> {
     let now = chrono::Utc::now().to_rfc3339();
     let id: i64 = sqlx::query_scalar(
@@ -31,7 +31,7 @@ pub async fn enqueue(st: &AppState, device_udid: &str, ipa_id: &str, kind: &str)
     Ok(job)
 }
 
-/// Spustí worker pro danou úlohu na pozadí (fire-and-forget tokio task).
+/// Starts a worker for the given job in the background (fire-and-forget tokio task).
 pub fn spawn_worker(st: AppState, job_id: i64) {
     let jobs = st.running_jobs.clone();
     let task = tokio::spawn(async move {
@@ -43,13 +43,13 @@ pub fn spawn_worker(st: AppState, job_id: i64) {
             m.remove(&job_id);
         }
     });
-    // Registruj abort handle SYNCHRONNĚ (std mutex) — než worker stihne remove.
+    // Register the abort handle SYNCHRONOUSLY (std mutex) — before the worker manages to remove.
     if let Ok(mut m) = jobs.lock() {
         m.insert(job_id, task.abort_handle());
     };
 }
 
-/// Zruší běžící úlohu (abort tokio tasku + označení v DB).
+/// Cancels a running job (abort the tokio task + mark it in the DB).
 pub async fn cancel(st: &AppState, job_id: i64) -> anyhow::Result<bool> {
     let handle = st.running_jobs.lock().ok().and_then(|mut m| m.remove(&job_id));
     if let Some(h) = handle {
@@ -78,7 +78,7 @@ async fn run_job(st: &AppState, job_id: i64) -> anyhow::Result<()> {
         .fetch_one(&st.db)
         .await?;
 
-    // Progress callback zapisuje do DB.
+    // The progress callback writes into the DB.
     let st2 = st.clone();
     let progress = move |pct: u64, msg: String| {
         let st = st2.clone();
@@ -110,7 +110,7 @@ async fn record_installation(
 ) -> anyhow::Result<()> {
     let now = chrono::Utc::now().to_rfc3339();
     let expires_s = expires.map(|d| d.to_rfc3339());
-    // signed_bundle_id odvozujeme deterministicky (viz signer); zde uložíme původní.
+    // signed_bundle_id is derived deterministically (see signer); here we store the original.
     sqlx::query(
         "INSERT INTO installation (device_udid, ipa_id, signed_bundle_id, profile_expires, last_installed, status)
          VALUES (?, ?, ?, ?, ?, 'installed')

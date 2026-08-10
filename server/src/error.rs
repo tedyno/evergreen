@@ -1,4 +1,4 @@
-//! Jednotný chybový typ pro HTTP vrstvu.
+//! Unified error type for the HTTP layer.
 
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};

@@ -1,5 +1,5 @@
-//! Šifrování citlivých polí (Apple ID heslo, session tokeny) at rest.
-//! AES-256-GCM, klíč z Config::master_key. Formát: base64(nonce[12] || ciphertext).
+//! Encryption of sensitive fields (Apple ID password, session tokens) at rest.
+//! AES-256-GCM, key from Config::master_key. Format: base64(nonce[12] || ciphertext).
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};

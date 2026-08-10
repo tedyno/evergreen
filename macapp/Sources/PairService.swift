@@ -1,7 +1,7 @@
 import Foundation
 
-/// Párování iPadu — appka jen zavolá server (`POST /api/pair/usb`), který má
-/// usbmuxd přístup a spáruje připojený iPad sám. Žádné CLI.
+/// iPad pairing — the app just calls the server (`POST /api/pair/usb`), which has
+/// usbmuxd access and pairs the connected iPad itself. No CLI.
 @MainActor
 final class PairService: ObservableObject {
     enum Phase: Equatable {
@@ -13,7 +13,7 @@ final class PairService: ObservableObject {
 
     @Published private(set) var phase: Phase = .idle
 
-    /// Vypíše UDID zařízení připojených přes USB.
+    /// Lists the UDIDs of devices connected via USB.
     func listUSBDevices(serverURL: URL) async -> [String] {
         let url = serverURL.appendingPathComponent("api/pair/usb")
         var req = URLRequest(url: url)
@@ -25,7 +25,7 @@ final class PairService: ObservableObject {
         return list
     }
 
-    /// Spáruje připojený iPad přes server a nechá server zjistit IP (Bonjour).
+    /// Pairs the connected iPad via the server and lets the server detect the IP (Bonjour).
     func pair(serverURL: URL, address: String?) async {
         phase = .running
 
@@ -33,7 +33,7 @@ final class PairService: ObservableObject {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.timeoutInterval = 120   // párování čeká na „Trust" na iPadu
+        req.timeoutInterval = 120   // pairing waits for "Trust" on the iPad
         var body: [String: Any] = [:]
         if let address, !address.isEmpty { body["address"] = address }
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)

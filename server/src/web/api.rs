@@ -1,4 +1,4 @@
-//! REST API handlery.
+//! REST API handlers.
 
 use axum::extract::{Multipart, Path, State};
 use axum::Json;
@@ -18,7 +18,7 @@ pub async fn status() -> Json<Value> {
     }))
 }
 
-// ---------------------------------------------------------------- účet
+// ---------------------------------------------------------------- account
 
 pub async fn account_status(State(st): State<AppState>) -> AppResult<Json<Value>> {
     let row: Option<(String, Option<String>)> =
@@ -44,7 +44,7 @@ pub async fn login(
         .await
         .map_err(AppError::Other)?;
 
-    // Ulož účet (heslo šifrovaně) hned po prvním pokusu.
+    // Store the account (password encrypted) right after the first attempt.
     let pw_enc = crate::crypto::encrypt(&st.cfg.master_key, &req.password)
         .map_err(AppError::Other)?;
     let now = chrono::Utc::now().to_rfc3339();
@@ -63,7 +63,7 @@ pub async fn login(
     Ok(Json(outcome_json(&outcome)))
 }
 
-/// Uloží přihlášenou session šifrovaně do DB, ať přežije restart serveru.
+/// Stores the logged-in session encrypted in the DB so it survives a server restart.
 async fn persist_session(st: &AppState) {
     if let Some(sess) = st.apple.export_session().await {
         if let Ok(enc) = crate::crypto::encrypt(&st.cfg.master_key, &sess) {
@@ -106,7 +106,7 @@ fn outcome_json(o: &LoginOutcome) -> Value {
     }
 }
 
-// ------------------------------------------------------------- zařízení
+// ------------------------------------------------------------- devices
 
 pub async fn list_devices(State(st): State<AppState>) -> AppResult<Json<Vec<Device>>> {
     let devices = sqlx::query_as::<_, Device>("SELECT * FROM device ORDER BY name")
@@ -126,7 +126,7 @@ pub async fn delete_device(
     Ok(Json(json!({ "ok": true })))
 }
 
-/// Upload pairing file z CLI. Tělo = plist pairing file, hlavičky nesou metadata.
+/// Upload of a pairing file from the CLI. Body = plist pairing file, headers carry the metadata.
 pub async fn upload_pairing(
     State(st): State<AppState>,
     headers: axum::http::HeaderMap,
@@ -134,7 +134,7 @@ pub async fn upload_pairing(
 ) -> AppResult<Json<Value>> {
     let udid = header(&headers, "x-udid")
         .ok_or_else(|| AppError::BadRequest("chybí hlavička X-UDID".into()))?;
-    // UDID jde do názvu souboru — povol jen bezpečné znaky (proti path traversal).
+    // The UDID goes into the file name — allow only safe characters (against path traversal).
     if udid.is_empty() || !udid.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
         return Err(AppError::BadRequest("neplatný UDID".into()));
     }
@@ -165,8 +165,8 @@ pub async fn upload_pairing(
     Ok(Json(json!({ "ok": true, "udid": udid })))
 }
 
-/// DEBUG: nainstaluje už podepsanou IPA ({ipa_id}-signed.ipa) přímo na zařízení,
-/// bez resignu/auth — pro test RemoteXPC tunelu nezávisle na Apple throttlu.
+/// DEBUG: installs an already-signed IPA ({ipa_id}-signed.ipa) directly onto the device,
+/// without resign/auth — to test the RemoteXPC tunnel independently of Apple throttling.
 pub async fn debug_install_direct(
     State(st): State<AppState>,
     Json(req): Json<InstallRequest>,
@@ -186,7 +186,7 @@ pub async fn debug_install_direct(
     Ok(Json(json!({ "ok": true })))
 }
 
-/// Přehled App ID účtu z Developer Services (globální — i AltStore/Xcode).
+/// Overview of the account's App IDs from Developer Services (global — including AltStore/Xcode).
 pub async fn account_appids(State(st): State<AppState>) -> AppResult<Json<Value>> {
     let (team_id, ids) = st.apple.account_app_ids().await.map_err(AppError::Other)?;
     Ok(Json(json!({
@@ -197,9 +197,9 @@ pub async fn account_appids(State(st): State<AppState>) -> AppResult<Json<Value>
     })))
 }
 
-// ---------------------------------------------------- párování (USB, v serveru)
+// ---------------------------------------------------- pairing (USB, in the server)
 
-/// Seznam UDID zařízení připojených přes USB.
+/// List of UDIDs of devices connected over USB.
 pub async fn pair_usb_list() -> AppResult<Json<Vec<String>>> {
     let list = crate::pairing::list_usb().await.map_err(AppError::Other)?;
     Ok(Json(list))
@@ -208,12 +208,12 @@ pub async fn pair_usb_list() -> AppResult<Json<Vec<String>>> {
 #[derive(serde::Deserialize)]
 pub struct PairUsbRequest {
     pub udid: Option<String>,
-    /// Ruční IP (přebije auto-detekci, když je zadaná).
+    /// Manual IP (overrides auto-detection when provided).
     pub address: Option<String>,
 }
 
-/// Spáruje připojený iPad přes USB, uloží pairing file + zařízení do DB a zkusí
-/// automaticky zjistit jeho IP ve Wi-Fi (Bonjour). Bez CLI — vše v serveru.
+/// Pairs the connected iPad over USB, stores the pairing file + device in the DB and tries
+/// to auto-detect its Wi-Fi IP (Bonjour). No CLI — everything in the server.
 pub async fn pair_usb(
     State(st): State<AppState>,
     Json(req): Json<PairUsbRequest>,
@@ -227,7 +227,7 @@ pub async fn pair_usb(
         .await
         .map_err(|e| AppError::Other(e.into()))?;
 
-    // Ruční adresa má přednost před auto-detekcí.
+    // A manual address takes precedence over auto-detection.
     let address = req.address.clone().filter(|s| !s.is_empty()).or_else(|| res.address.clone());
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -263,7 +263,7 @@ pub struct SetAddressRequest {
     pub address: String,
 }
 
-/// Znovu automaticky zjistí IP zařízení (usbmuxd) a uloží ji.
+/// Re-auto-detects the device's IP (usbmuxd) and stores it.
 pub async fn detect_device_ip(
     State(st): State<AppState>,
     Path(udid): Path<String>,
@@ -279,7 +279,7 @@ pub async fn detect_device_ip(
     Ok(Json(json!({ "address": ip })))
 }
 
-/// Ruční nastavení IP zařízení (fallback, když auto-detekce selže).
+/// Manually set the device's IP (fallback when auto-detection fails).
 pub async fn set_device_address(
     State(st): State<AppState>,
     Path(udid): Path<String>,
@@ -296,7 +296,7 @@ pub async fn set_device_address(
     Ok(Json(json!({ "ok": true, "address": req.address })))
 }
 
-// ------------------------------------------------------------- IPA katalog
+// ------------------------------------------------------------- IPA catalog
 
 pub async fn list_ipa(State(st): State<AppState>) -> AppResult<Json<Vec<Ipa>>> {
     let items = sqlx::query_as::<_, Ipa>("SELECT * FROM ipa ORDER BY created_at DESC")
@@ -348,13 +348,13 @@ pub async fn delete_ipa(
     Ok(Json(json!({ "ok": true })))
 }
 
-// ------------------------------------------------------------- instalace
+// ------------------------------------------------------------- installation
 
 pub async fn install(
     State(st): State<AppState>,
     Json(req): Json<InstallRequest>,
 ) -> AppResult<Json<Job>> {
-    // Ověř, že zařízení i IPA existují.
+    // Verify that both the device and the IPA exist.
     let _dev = sqlx::query_as::<_, Device>("SELECT * FROM device WHERE udid = ?")
         .bind(&req.device_udid)
         .fetch_optional(&st.db)
@@ -381,7 +381,7 @@ pub async fn list_installations(
     Ok(Json(items))
 }
 
-/// Vrací PNG ikonu IPA (uloženou při uploadu).
+/// Returns the IPA's PNG icon (stored during upload).
 pub async fn icon(
     State(st): State<AppState>,
     Path(id): Path<String>,
@@ -399,7 +399,7 @@ pub async fn icon(
     Ok(([(axum::http::header::CONTENT_TYPE, "image/png")], data))
 }
 
-// ------------------------------------------------------------- úlohy
+// ------------------------------------------------------------- jobs
 
 pub async fn list_jobs(State(st): State<AppState>) -> AppResult<Json<Vec<Job>>> {
     let items =
@@ -409,7 +409,7 @@ pub async fn list_jobs(State(st): State<AppState>) -> AppResult<Json<Vec<Job>>> 
     Ok(Json(items))
 }
 
-/// Zruší běžící úlohu.
+/// Cancels a running job.
 pub async fn cancel_job(
     State(st): State<AppState>,
     Path(id): Path<i64>,

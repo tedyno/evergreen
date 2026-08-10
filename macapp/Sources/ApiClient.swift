@@ -1,12 +1,12 @@
 import Foundation
 
-/// Chyba se srozumitelnou hláškou z těla odpovědi serveru.
+/// An error with a human-readable message taken from the server's response body.
 struct ApiError: LocalizedError {
     let message: String
     var errorDescription: String? { message }
 }
 
-/// Tenký async klient nad REST API homesign serveru.
+/// A thin async client on top of the homesign server's REST API.
 actor ApiClient {
     private var baseURL: URL
 
@@ -22,7 +22,7 @@ actor ApiClient {
         baseURL.appendingPathComponent(path)
     }
 
-    // MARK: - obecné volání
+    // MARK: - generic requests
 
     private func send(_ request: URLRequest) async throws -> Data {
         let (data, response): (Data, URLResponse)
@@ -35,7 +35,7 @@ actor ApiClient {
             throw ApiError(message: "Neplatná odpověď serveru")
         }
         guard (200..<300).contains(http.statusCode) else {
-            // Server vrací chyby jako {"error": "..."}.
+            // The server returns errors as {"error": "..."}.
             if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let msg = obj["error"] as? String {
                 throw ApiError(message: msg)
@@ -73,7 +73,7 @@ actor ApiClient {
         return try await send(req)
     }
 
-    // MARK: - endpointy
+    // MARK: - endpoints
 
     func status() async throws -> ServerStatus {
         try await get("api/status", as: ServerStatus.self)
@@ -107,7 +107,7 @@ actor ApiClient {
         _ = try await post("api/devices/\(udid)/address", json: ["address": address], as: OkResponse.self)
     }
 
-    /// Znovu zjistí IP zařízení přes usbmuxd. Vrací nalezenou adresu (nebo nil).
+    /// Re-detects the device's IP via usbmuxd. Returns the found address (or nil).
     func detectDeviceIP(udid: String) async throws -> String? {
         struct AddrResponse: Decodable { let address: String? }
         var req = URLRequest(url: url("api/devices/\(udid)/detect-ip"))
@@ -139,7 +139,7 @@ actor ApiClient {
         _ = try await send(req)
     }
 
-    /// Skutečný stav App ID z Apple účtu (pomalé — round-trip na Apple).
+    /// The actual App ID state from the Apple account (slow — round-trip to Apple).
     func accountAppIds() async throws -> AppIdInfo {
         var req = URLRequest(url: url("api/appids"))
         req.timeoutInterval = 60
@@ -151,12 +151,12 @@ actor ApiClient {
         try await post("api/install", json: ["device_udid": deviceUdid, "ipa_id": ipaId], as: HSJob.self)
     }
 
-    /// URL ikony IPA pro AsyncImage.
+    /// IPA icon URL for AsyncImage.
     func iconURL(for ipaId: String) -> URL {
         url("icon/\(ipaId)")
     }
 
-    /// Nahraje .ipa přes multipart s průběhem.
+    /// Uploads the .ipa via multipart with progress reporting.
     func uploadIpa(fileURL: URL, progress: @escaping @Sendable (Double) -> Void) async throws -> Ipa {
         let boundary = "homesign.\(UUID().uuidString)"
         var req = URLRequest(url: url("api/ipa"))
@@ -188,7 +188,7 @@ actor ApiClient {
     }
 }
 
-/// Delegát pro průběh uploadu.
+/// Delegate for upload progress.
 private final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     let onProgress: @Sendable (Double) -> Void
     init(onProgress: @escaping @Sendable (Double) -> Void) { self.onProgress = onProgress }

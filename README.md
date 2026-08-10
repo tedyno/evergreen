@@ -1,40 +1,44 @@
 # 🌲 Evergreen
 
-Self-hosted sideloading pro iPad/iPhone bez závislosti na AltServeru. Docker server s webovým UI podepisuje a instaluje IPA po síti a **sám** obnovuje 7denní profily — refresh neiniciuje iOS appka (tam ho systém škrtí), ale server běžící 24/7.
+Self-hosted sideloading for iPad/iPhone that **keeps apps alive**. Unlike AltStore/SideStore — where apps die after 7 days because the on-device refresh is throttled by iOS — Evergreen re-signs and reinstalls from a server that **you** control, so nothing has to run on the device.
 
-## Komponenty
+The key idea: the refresh is **initiated by the server**, not by an app on the iPad. iOS can't throttle what it doesn't schedule. The iPad only needs to be paired and reachable.
 
-| Adresář | Co to je |
+## Components
+
+| Directory | What it is |
 |---|---|
-| `server/` | Rust server (axum) — web UI, REST API, podepisování, instalace přes RemoteXPC tunel, cron refresh |
-| `app/` | iOS/iPadOS store appka (SwiftUI) — katalog nahraných IPA, instalace tapnutím |
-| `cli/` | Pomocný nástroj pro Mac/Linux — jednorázové USB párování iPadu a upload pairing filu na server |
-| `docker/` | Dockerfile + docker-compose (server + omnisette sidecar) |
-| `docs/` | Architektura a poznámky |
+| `macapp/` | Native macOS app (SwiftUI) — the UI. Bundles and launches the server, so it's one app from your side. |
+| `server/` | Rust engine (axum) — REST API, Apple ID auth (GSA + anisette), Developer Services (cert/App ID/profile), IPA re-signing, transfer + install to the device. |
+| `third_party/apple-private-apis` | Vendored `omnisette`/`icloud_auth` with a small patch so the server builds natively on macOS. |
+| `docs/` | Architecture and setup notes. |
 
-## Provozní model
+Why the engine is in Rust: all the heavy iOS/Apple protocol libraries live there (`idevice` for usbmux/lockdown/AFC/installation, `icloud_auth`+`omnisette` for GrandSlam auth + anisette). Reimplementing them in Swift would be months of work for no benefit. The macOS app is the native UI; the Rust server is the engine.
 
-- Free Apple ID: 7denní profily, 3 sloty na appky (store + 2), 10 App ID týdně.
-- Server běží doma (NAS/Pi/PC), iPad je přes noc na stejné Wi-Fi → refresh běží automaticky každých ~6 dní.
-- Cíl: iPadOS 17+ (RemoteXPC/CoreDevice tunel přes `idevice`).
+## How it works
 
-Detaily v [docs/architecture.md](docs/architecture.md), postup zprovoznění v [docs/setup.md](docs/setup.md).
+1. **Pair** the iPad once over USB (done from the app — no CLI).
+2. **Sign in** with a free Apple ID.
+3. **Upload an IPA** and install it. The server registers the device, issues a development certificate (from your CSR), creates an App ID, downloads a provisioning profile, rewrites the bundle id to a unique one under your team, and signs the app (every nested framework individually) with your real Apple Development certificate.
+4. The server keeps a copy of the cert + profile, so subsequent re-signs are **offline** (no Apple round-trip) until the profile expires.
+5. A **refresh scheduler** re-signs and reinstalls before the 7-day profile expires (upgrade preserves app data). This is logged like any other job.
 
-## Stav
+## Free Apple ID limits
 
-Ověřeno (kompiluje se, boot + smoke testy prošly):
+7-day provisioning profiles, 3 active App IDs on a device, 10 new App IDs per week. Evergreen reuses the certificate and only contacts Apple for a fresh profile (~every 6 days).
 
-- ✅ **Server** — axum web UI + REST API, SQLite (sqlx) persistence, upload IPA s parsováním `Info.plist`, fronta úloh, šifrování citlivých polí (AES-256-GCM, testy). Boot, migrace, API i UI ověřeny; kompiluje na Linuxu (Docker).
-- ✅ **CLI** — `pair` (USB párování přes idevice, zapnutí Wi-Fi connections, upload pairing filu) + `list`. Kompiluje; reálné párování testovatelné s iPadem.
-- ✅ **Instalace přes RemoteXPC (iOS 17+)** — CoreDeviceProxy → userspace software tunel (bez TUN/NET_ADMIN) → RSD → `installation_proxy` (upgrade zachová data). Kód hotový, ověření vyžaduje iPad.
-- ✅ **Refresh scheduler** — hodinová kontrola expirace, přepodepsání+přeinstalace ze serveru, retry když je iPad mimo síť.
-- ✅ **iOS/iPadOS store appka** — SwiftUI (katalog, instalace, expirace, živý stav úloh). Typecheck proti iOS 17 SDK prošel.
-- ✅ **Apple ID auth** — GrandSlam/GSA + 2FA přes `icloud_auth` a anisette sidecar. Kód hotový, testovatelný s reálným účtem.
-- ✅ **Docker** — multi-stage image + compose se serverem a omnisette sidecarem.
+## Status
 
-Zbývá (M2, vyžaduje živý účet/zařízení k dotažení):
+Works, verified end-to-end on a real iPad (iOS 26) over USB:
 
-- ⏳ **Resign** — přepis bundle id + podpis pod vlastním App ID. Teď funguje **passthrough** už podepsaných IPA (M1 tím jede end-to-end); plný resign se dolaďuje.
-- ⏳ **Developer Services klient** (`apple/devportal.rs`) — registrace zařízení, cert, App ID, profil. Struktura a endpointy připravené, čeká na test proti živému účtu.
+- ✅ Native macOS app that starts/stops the embedded server; Apple ID login survives restarts (encrypted session on disk).
+- ✅ USB pairing and automatic Wi-Fi IP detection, both from the app.
+- ✅ Full re-sign pipeline: GSA auth (incl. the encrypted Xcode token), Developer Services (device / cert / App ID / profile), bundle-id rewrite, per-framework `codesign` + local verification. Offline re-sign from stored cert+profile (also sidesteps Apple's `-22411` rate limit).
+- ✅ Transfer + install over **direct AFC** (usbmux) — the userspace tunnel stalls on bulk transfer, so we bypass it over USB.
+- ✅ Resign log (Jobs) with time / status / MB progress / errors, cancellable.
 
-> Pozn.: knihovna `idevice` má vlastní [AI policy](https://github.com/jkcoxson/idevice/blob/master/AI.md) — případné příspěvky do ní vyžadují, aby autor kódu rozuměl a ručně psal PR popisy.
+Not done yet:
+
+- ⏳ **Wireless install/refresh.** iOS 17+ over the network needs the RemotePairing subsystem (its own Ed25519 pairing with a PIN on the device, TLS-PSK tunnel). And bulk transfer would go through the same tunnel that stalls over USB — an open upstream issue in the userspace TCP stack. Currently install/refresh works over USB.
+
+> Note: the `idevice` library has its own [AI policy](https://github.com/jkcoxson/idevice/blob/master/AI.md) — contributions to it require the code author to understand the code and write PR descriptions by hand.
