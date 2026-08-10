@@ -1,19 +1,26 @@
-# Skeleton — server image přijde v M6, omnisette sidecar lze použít už teď.
 services:
   homesign:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+    image: homesign-server:dev
+    restart: unless-stopped
     ports:
       - "8080:8080"
     volumes:
       - ../data:/data
     environment:
       ANISETTE_URL: http://anisette:6969
+      HOMESIGN_REFRESH_BEFORE_DAYS: "1"
     depends_on:
       - anisette
+    # Pozn.: software tunel k iPadu je userspace (nepotřebuje NET_ADMIN ani
+    # /dev/net/tun). Pokud by server na iPad v LAN nedosáhl přes bridge NAT,
+    # přepni na host síť:
+    #   network_mode: host
 
   anisette:
     image: ghcr.io/sidestore/omnisette-server:latest
+    restart: unless-stopped
     ports:
       - "6969:6969"

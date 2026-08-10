@@ -1,0 +1,32 @@
+# XcodeGen projekt. Generování: `xcodegen generate` (brew install xcodegen).
+name: HomesignStore
+options:
+  bundleIdPrefix: cz.homesign
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""    # doplní se při podpisu
+targets:
+  HomesignStore:
+    type: application
+    platform: iOS
+    sources:
+      - Sources
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: homesign
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        # Server URL lze přepsat v appce; default pro vývoj:
+        HSDefaultServer: "http://homesign.local:8080"
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true   # domácí HTTP server
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: cz.homesign.store
+        TARGETED_DEVICE_FAMILY: "1,2"    # iPhone + iPad

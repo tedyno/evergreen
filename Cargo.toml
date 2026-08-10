@@ -5,3 +5,21 @@ members = ["server", "cli"]
 [workspace.package]
 edition = "2021"
 license = "MIT"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+plist = "1"
+
+# Zařízení (lockdown, AFC, installation_proxy, RemoteXPC tunel pro iOS 17+).
+# Verze fixovaná; features zapínáme per-crate.
+idevice = "0.1.65"
+
+# Apple ID auth (GrandSlam/GSA + anisette). Developer Services API si píšeme sami.
+icloud_auth = { git = "https://github.com/SideStore/apple-private-apis", rev = "03beb1aa42991ccdad6214dee77e72282bef461f" }
+omnisette = { git = "https://github.com/SideStore/apple-private-apis", rev = "03beb1aa42991ccdad6214dee77e72282bef461f" }

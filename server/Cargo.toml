@@ -5,6 +5,33 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-# M1: idevice (RemoteXPC tunel, AFC, installation_proxy)
-# M2: apple-private-apis (GrandSlam auth, Developer Services), signer
-# M3: axum, tokio, sqlx (SQLite)
+tokio.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+plist.workspace = true
+
+axum = { version = "0.7", features = ["multipart", "macros"] }
+tower-http = { version = "0.6", features = ["trace", "limit"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "chrono", "macros"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
+zip = "2"
+aes-gcm = "0.10"
+rand = "0.8"
+base64 = "0.22"
+
+# Device + Apple vrstvy (integrace v M1/M2). Zapnuté rovnou, ať CI staví celý strom.
+idevice = { workspace = true, features = [
+    "tcp", "usbmuxd", "afc", "installation_proxy", "core_device",
+    "core_device_proxy", "rsd", "tunnel_tcp_stack",
+] }
+icloud_auth.workspace = true
+omnisette.workspace = true
+
+[lints.rust]
+dead_code = "allow"

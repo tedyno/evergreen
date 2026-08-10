@@ -4,5 +4,15 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "homesign-cli"
+path = "src/main.rs"
+
 [dependencies]
-# M1: idevice (USB pairing přes usbmuxd), reqwest (upload pairing filu na server)
+tokio.workspace = true
+anyhow.workspace = true
+plist.workspace = true
+clap = { version = "4", features = ["derive"] }
+uuid = { version = "1", features = ["v4"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+idevice = { workspace = true, features = ["tcp", "usbmuxd", "pair"] }

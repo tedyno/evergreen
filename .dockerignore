@@ -1,0 +1,6 @@
+target/
+data/
+app/
+docs/
+.git/
+*.ipa
