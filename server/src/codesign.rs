@@ -246,6 +246,10 @@ async fn machine_id(st: &AppState) -> Result<String> {
     Ok(id)
 }
 
+/// Serializuje podpis — sdílený keychain a globální keychain search-list nesnese
+/// souběh (refresh scheduler vs. uživatelská install úloha).
+static SIGN_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// Rozbalí IPA, vloží profil + entitlements a podepíše `codesign`em; vrátí .ipa.
 async fn sign_ipa(
     st: &AppState,
@@ -254,15 +258,32 @@ async fn sign_ipa(
     profile: &[u8],
     new_bundle_id: &str,
 ) -> Result<PathBuf> {
+    let _guard = SIGN_LOCK.lock().await;
     let work = st.cfg.data_dir.join("signwork").join(uuid::Uuid::new_v4().to_string());
     tokio::fs::create_dir_all(&work).await?;
 
+    // Vlastní práce v bloku, ať work dir vždy uklidíme (i při chybě).
+    let result = sign_ipa_inner(st, ipa, identity, profile, new_bundle_id, &work).await;
+    let _ = tokio::fs::remove_dir_all(&work).await;
+    result
+}
+
+async fn sign_ipa_inner(
+    st: &AppState,
+    ipa: &Ipa,
+    identity: &Identity,
+    profile: &[u8],
+    new_bundle_id: &str,
+    work: &Path,
+) -> Result<PathBuf> {
+    let work_s = work.to_string_lossy().to_string();
+
     // Rozbal IPA.
-    run(UNZIP, &["-q", &ipa.path, "-d", work.to_str().unwrap()]).await.context("unzip IPA")?;
+    run(UNZIP, &["-q", &ipa.path, "-d", &work_s]).await.context("unzip IPA")?;
 
     // Najdi Payload/*.app.
-    let payload = work.join("Payload");
-    let app_dir = first_app_bundle(&payload).await?;
+    let app_dir = first_app_bundle(&work.join("Payload")).await?;
+    let app_s = app_dir.to_string_lossy().to_string();
 
     // Přepiš CFBundleIdentifier v Info.plist na nový bundle id.
     rewrite_bundle_id(&app_dir.join("Info.plist"), new_bundle_id).await
@@ -277,34 +298,30 @@ async fn sign_ipa(
     let ent_path = work.join("entitlements.plist");
     tokio::fs::write(&ent_path, entitlements).await?;
 
-    // Připrav dočasný keychain s identitou.
+    // Dočasný keychain s identitou; podepiš vnořené frameworky jednotlivě + verify.
     let keychain = Keychain::create(st, identity).await?;
-
-    // Podepiš vnořené frameworky/dylib/extensions jednotlivě (od nejhlubšího),
-    // pak teprve hlavní app s entitlements. `--deep` je nespolehlivý (nechává
-    // některé frameworky nepodepsané → ApplicationVerificationFailed).
-    let sign_res = sign_all(&app_dir, &ent_path, &identity.sha1, &keychain.path).await;
-
+    let sign_res = sign_all(&app_s, &ent_path, &identity.sha1, &keychain.path).await;
     keychain.cleanup().await;
     sign_res.context("codesign")?;
 
-    // Zabal zpět do .ipa.
+    // Zabal zpět do .ipa (zip z work adresáře → cesty "Payload/...").
     let out_ipa = st.cfg.ipa_dir().join(format!("{}-signed.ipa", ipa.id));
     let _ = tokio::fs::remove_file(&out_ipa).await;
-    // zip musí běžet z work adresáře, ať je cesta "Payload/...".
-    run_in(&work, ZIP, &["-qr", out_ipa.to_str().unwrap(), "Payload"]).await.context("zip IPA")?;
+    run_in(work, ZIP, &["-qr", &out_ipa.to_string_lossy(), "Payload"]).await.context("zip IPA")?;
 
-    let _ = tokio::fs::remove_dir_all(&work).await;
     Ok(out_ipa)
 }
 
 /// Podepíše všechny vnořené frameworky/dylib/appex (od nejhlubšího), pak app.
-async fn sign_all(app_dir: &Path, ent_path: &Path, sha1: &str, keychain: &Path) -> Result<()> {
+async fn sign_all(app_path: &str, ent_path: &Path, sha1: &str, keychain: &Path) -> Result<()> {
+    let ent = ent_path.to_string_lossy().to_string();
+    let kc = keychain.to_string_lossy().to_string();
+
     // Najdi vnořený podepsatelný kód.
     let out = output(
         "/usr/bin/find",
         &[
-            app_dir.to_str().unwrap(),
+            app_path,
             "(", "-name", "*.framework", "-o", "-name", "*.dylib", "-o", "-name", "*.appex", ")",
         ],
     )
@@ -318,7 +335,7 @@ async fn sign_all(app_dir: &Path, ent_path: &Path, sha1: &str, keychain: &Path) 
     for item in &items {
         run(
             CODESIGN,
-            &["--force", "--timestamp=none", "--sign", sha1, "--keychain", keychain.to_str().unwrap(), item],
+            &["--force", "--timestamp=none", "--sign", sha1, "--keychain", &kc, item],
         )
         .await
         .with_context(|| format!("podpis vnořeného {item}"))?;
@@ -329,16 +346,14 @@ async fn sign_all(app_dir: &Path, ent_path: &Path, sha1: &str, keychain: &Path) 
         CODESIGN,
         &[
             "--force", "--timestamp=none", "--sign", sha1,
-            "--entitlements", ent_path.to_str().unwrap(),
-            "--keychain", keychain.to_str().unwrap(),
-            app_dir.to_str().unwrap(),
+            "--entitlements", &ent, "--keychain", &kc, app_path,
         ],
     )
     .await
     .context("podpis hlavní app")?;
 
     // Ověř podpis lokálně (chytne nepodepsaný nested kód dřív než zařízení).
-    run(CODESIGN, &["--verify", "--deep", "--strict", app_dir.to_str().unwrap()])
+    run(CODESIGN, &["--verify", "--deep", "--strict", app_path])
         .await
         .context("ověření podpisu (--verify --deep --strict)")?;
     tracing::info!("podpis ověřen (--verify --deep --strict OK)");

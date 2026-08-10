@@ -134,6 +134,10 @@ pub async fn upload_pairing(
 ) -> AppResult<Json<Value>> {
     let udid = header(&headers, "x-udid")
         .ok_or_else(|| AppError::BadRequest("chybí hlavička X-UDID".into()))?;
+    // UDID jde do názvu souboru — povol jen bezpečné znaky (proti path traversal).
+    if udid.is_empty() || !udid.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(AppError::BadRequest("neplatný UDID".into()));
+    }
     let name = header(&headers, "x-name").unwrap_or_else(|| "iPad".to_string());
     let address = header(&headers, "x-address");
 

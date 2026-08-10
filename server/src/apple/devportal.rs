@@ -67,8 +67,10 @@ async fn request(
     let resp = req.body(xml).send().await?;
     let status = resp.status();
     let text = resp.text().await?;
-    let dict: plist::Dictionary = plist::from_bytes(text.as_bytes())
-        .map_err(|e| anyhow!("odpověď není plist (HTTP {status}): {e}; tělo: {}", &text[..text.len().min(400)]))?;
+    let dict: plist::Dictionary = plist::from_bytes(text.as_bytes()).map_err(|e| {
+        let snippet: String = text.chars().take(400).collect();
+        anyhow!("odpověď není plist (HTTP {status}): {e}; tělo: {snippet}")
+    })?;
 
     // Chybová pole Developer Services.
     if let Some(rc) = dict.get("resultCode").and_then(|v| v.as_signed_integer()) {

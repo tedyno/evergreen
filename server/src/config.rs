@@ -21,8 +21,9 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> anyhow::Result<Self> {
+        // Loopback default — server nemá auth vrstvu, nesmí viset na celé síti.
         let bind = std::env::var("HOMESIGN_BIND")
-            .unwrap_or_else(|_| "0.0.0.0:8080".to_string())
+            .unwrap_or_else(|_| "127.0.0.1:8080".to_string())
             .parse()?;
         let data_dir = PathBuf::from(
             std::env::var("HOMESIGN_DATA").unwrap_or_else(|_| "./data".to_string()),
@@ -72,6 +73,12 @@ fn load_or_create_master_key(data_dir: &std::path::Path) -> anyhow::Result<[u8; 
     let mut key = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut key);
     std::fs::write(&path, STANDARD.encode(key))?;
+    // Klíč dešifruje Apple ID heslo + session — jen pro vlastníka (0600).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
     tracing::info!("vygenerován nový master.key v {}", path.display());
     Ok(key)
 }

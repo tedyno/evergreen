@@ -1,10 +1,9 @@
 //! Sdílený stav aplikace předávaný do handlerů.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use sqlx::SqlitePool;
-use tokio::sync::Mutex;
 use tokio::task::AbortHandle;
 
 use crate::apple::AppleClient;
