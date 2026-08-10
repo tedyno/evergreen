@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 
-use crate::models::{Device, Installation, Ipa};
+use crate::models::{Device, Installation};
 use crate::state::AppState;
 
 pub fn spawn(st: AppState) {
@@ -42,48 +42,31 @@ async fn tick(st: &AppState) -> anyhow::Result<()> {
         if !needs {
             continue;
         }
+
+        // Rychlý ping — když je iPad mimo síť, zkusíme příště (bez zápisu chyby,
+        // ať se resign log nezaplní neúspěchy z toho, že iPad zrovna spí).
+        let device = match sqlx::query_as::<_, Device>("SELECT * FROM device WHERE udid = ?")
+            .bind(&inst.device_udid)
+            .fetch_optional(&st.db)
+            .await?
+        {
+            Some(d) => d,
+            None => continue,
+        };
+        if crate::device::ping(&device).await.is_err() {
+            tracing::debug!("refresh: zařízení {} mimo síť, zkusím později", inst.device_udid);
+            continue;
+        }
+
         tracing::info!(
-            "refresh: instalace {} (device {}) vyprší {:?}",
-            inst.id, inst.device_udid, inst.profile_expires
+            "refresh: instalace {} vyprší {:?} — zařazuji resign",
+            inst.id, inst.profile_expires
         );
-        if let Err(e) = refresh_one(st, &inst).await {
-            tracing::warn!("refresh instalace {} selhal: {e:?}", inst.id);
-            let _ = sqlx::query("UPDATE installation SET status='error', error=? WHERE id=?")
-                .bind(e.to_string())
-                .bind(inst.id)
-                .execute(&st.db)
-                .await;
+        // Zařaď jako úlohu (kind 'refresh') → objeví se v resign logu (Úlohy).
+        match crate::jobs::enqueue(st, &inst.device_udid, &inst.ipa_id, "refresh").await {
+            Ok(job) => crate::jobs::spawn_worker(st.clone(), job.id),
+            Err(e) => tracing::warn!("refresh enqueue instalace {} selhal: {e:?}", inst.id),
         }
     }
-    Ok(())
-}
-
-async fn refresh_one(st: &AppState, inst: &Installation) -> anyhow::Result<()> {
-    let device = sqlx::query_as::<_, Device>("SELECT * FROM device WHERE udid = ?")
-        .bind(&inst.device_udid)
-        .fetch_one(&st.db)
-        .await?;
-    let ipa = sqlx::query_as::<_, Ipa>("SELECT * FROM ipa WHERE id = ?")
-        .bind(&inst.ipa_id)
-        .fetch_one(&st.db)
-        .await?;
-
-    // Nejdřív rychlý ping — když je iPad mimo síť, zkusíme příště (bez chyby).
-    if let Err(e) = crate::device::ping(&device).await {
-        anyhow::bail!("zařízení nedosažitelné, zkusím později: {e}");
-    }
-
-    let expires = crate::pipeline::install_flow(st, &device, &ipa, |_p, _m| async {}).await?;
-
-    let now = Utc::now().to_rfc3339();
-    sqlx::query(
-        "UPDATE installation SET profile_expires=?, last_installed=?, status='installed', error=NULL WHERE id=?",
-    )
-    .bind(expires.map(|d| d.to_rfc3339()))
-    .bind(&now)
-    .bind(inst.id)
-    .execute(&st.db)
-    .await?;
-    tracing::info!("refresh instalace {} hotov", inst.id);
     Ok(())
 }

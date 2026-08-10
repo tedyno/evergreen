@@ -6,11 +6,17 @@ use crate::models::{Device, Ipa, Job};
 use crate::state::AppState;
 
 pub async fn enqueue_install(st: &AppState, device_udid: &str, ipa_id: &str) -> AppResult<Job> {
+    enqueue(st, device_udid, ipa_id, "install").await
+}
+
+/// Zařadí úlohu daného druhu ('install' | 'refresh') — obojí je resign+instalace.
+pub async fn enqueue(st: &AppState, device_udid: &str, ipa_id: &str, kind: &str) -> AppResult<Job> {
     let now = chrono::Utc::now().to_rfc3339();
     let id: i64 = sqlx::query_scalar(
         "INSERT INTO job (kind, device_udid, ipa_id, status, created_at, updated_at)
-         VALUES ('install', ?, ?, 'queued', ?, ?) RETURNING id",
+         VALUES (?, ?, ?, 'queued', ?, ?) RETURNING id",
     )
+    .bind(kind)
     .bind(device_udid)
     .bind(ipa_id)
     .bind(&now)

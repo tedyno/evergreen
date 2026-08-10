@@ -6,6 +6,9 @@ struct JobsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                Text("Historie resignů a instalací — ruční i automatické (obnova před vypršením profilu). Vidíš čas, stav a případnou chybu.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 if state.jobs.isEmpty {
                     ContentUnavailableView("Žádné úlohy",
                                            systemImage: "list.bullet.rectangle",
