@@ -20,9 +20,26 @@ pub fn spawn(st: AppState) {
             if let Err(e) = tick(&st).await {
                 tracing::error!("refresh tick selhal: {e:?}");
             }
-            tokio::time::sleep(Duration::from_secs(3600)).await;
+            // While something is waiting for the iPad to be unlocked, re-check often so
+            // the renewal fires soon after unlock; otherwise the normal hourly cadence.
+            let delay = if any_blocked(&st).await { 60 } else { 3600 };
+            tokio::time::sleep(Duration::from_secs(delay)).await;
         }
     });
+}
+
+/// Runs one refresh pass immediately (used by the "I unlocked it" button).
+pub async fn run_once(st: &AppState) -> anyhow::Result<()> {
+    tick(st).await
+}
+
+/// Whether any renewal is currently waiting for the iPad to be unlocked.
+async fn any_blocked(st: &AppState) -> bool {
+    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM job WHERE status = 'blocked'")
+        .fetch_one(&st.db)
+        .await
+        .map(|n| n > 0)
+        .unwrap_or(false)
 }
 
 async fn tick(st: &AppState) -> anyhow::Result<()> {
@@ -40,6 +57,14 @@ async fn tick(st: &AppState) -> anyhow::Result<()> {
             None => false, // without a known expiration we do not refresh automatically
         };
         if !needs {
+            // Clear any stale "waiting for unlock" marker — this app doesn't need renewing.
+            let _ = sqlx::query(
+                "DELETE FROM job WHERE device_udid = ? AND ipa_id = ? AND kind = 'refresh' AND status = 'blocked'",
+            )
+            .bind(&inst.device_udid)
+            .bind(&inst.ipa_id)
+            .execute(&st.db)
+            .await;
             continue;
         }
 
@@ -63,7 +88,16 @@ async fn tick(st: &AppState) -> anyhow::Result<()> {
         // locked device — so only proceed wirelessly once we can confirm it's unlocked.
         if !crate::device::has_usb(&device).await {
             match crate::device::is_locked(&device).await {
-                Some(false) => {} // unlocked → proceed to renew
+                Some(false) => {
+                    // Was it waiting on a lock? Clear that so the fast polling stops.
+                    let _ = sqlx::query(
+                        "DELETE FROM job WHERE device_udid = ? AND ipa_id = ? AND kind = 'refresh' AND status = 'blocked'",
+                    )
+                    .bind(&inst.device_udid)
+                    .bind(&inst.ipa_id)
+                    .execute(&st.db)
+                    .await;
+                }
                 Some(true) => {
                     // Locked: record it once (not every hour) so the app can nudge the
                     // user to unlock. It renews on the next unlock.

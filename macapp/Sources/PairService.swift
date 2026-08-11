@@ -41,7 +41,7 @@ final class PairService: ObservableObject {
         do {
             let (data, resp) = try await URLSession.shared.data(for: req)
             guard let http = resp as? HTTPURLResponse else {
-                phase = .failed("Neplatná odpověď serveru")
+                phase = .failed(L.t("Neplatná odpověď serveru", "Invalid server response"))
                 return
             }
             let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
@@ -52,7 +52,7 @@ final class PairService: ObservableObject {
                 let wireless = obj?["wireless_ready"] as? Bool ?? false
                 phase = .success(udid: udid, name: name, address: addr, wireless: wireless)
             } else {
-                phase = .failed(obj?["error"] as? String ?? "Párování selhalo (HTTP \(http.statusCode))")
+                phase = .failed(obj?["error"] as? String ?? L.t("Párování selhalo (HTTP \(http.statusCode))", "Pairing failed (HTTP \(http.statusCode))"))
             }
         } catch {
             phase = .failed(error.localizedDescription)

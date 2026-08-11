@@ -48,6 +48,13 @@ struct JobRow: View {
                     .buttonStyle(.borderless)
                     .controlSize(.small)
                 }
+                if job.status == "blocked" {
+                    Button(state.t("Odemknul jsem", "I unlocked it")) {
+                        Task { await state.retryRefreshNow() }
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                }
                 if let d = job.createdDate {
                     Text(timeString(d))
                         .font(.caption2)

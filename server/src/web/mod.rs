@@ -43,6 +43,7 @@ pub fn router(state: AppState) -> Router {
         // jobs
         .route("/api/jobs", get(api::list_jobs))
         .route("/api/jobs/:id/cancel", post(api::cancel_job))
+        .route("/api/refresh/run", post(api::refresh_now))
         // axum has its own DefaultBodyLimit (2 MB) on extractors — without this,
         // the multipart IPA upload fails with a reset/400. The hard cap is held by the layer below.
         .layer(DefaultBodyLimit::disable())

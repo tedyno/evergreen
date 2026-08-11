@@ -69,7 +69,7 @@ final class ServerController: ObservableObject {
     func startIfNeeded() async {
         guard state != .running && state != .starting else { return }
         guard let binary = serverBinaryURL() else {
-            state = .failed("Chybí přibalená binárka serveru")
+            state = .failed(L.t("Chybí přibalená binárka serveru", "Bundled server binary is missing"))
             return
         }
         state = .starting
@@ -94,14 +94,15 @@ final class ServerController: ObservableObject {
                                    logPath: logPath, plistURL: plistURL, label: label)
         }.value
         guard ok else {
-            state = .failed("Nepodařilo se nainstalovat LaunchAgent")
+            state = .failed(L.t("Nepodařilo se nainstalovat LaunchAgent", "Couldn't install the LaunchAgent"))
             return
         }
 
         if await waitForHealth(timeout: 15) {
             state = .running
         } else {
-            state = .failed("Server nenaběhl včas — viz \(logURL.path)")
+            state = .failed(L.t("Server nenaběhl včas — viz \(logURL.path)",
+                                "Server didn't start in time — see \(logURL.path)"))
         }
     }
 

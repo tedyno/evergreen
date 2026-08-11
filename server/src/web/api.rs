@@ -10,6 +10,12 @@ use crate::models::*;
 use crate::state::AppState;
 use crate::{ipa as ipautil, jobs};
 
+/// Runs a refresh pass right now — used by the "I unlocked it" button on a blocked job.
+pub async fn refresh_now(State(st): State<AppState>) -> AppResult<Json<Value>> {
+    crate::refresh::run_once(&st).await.map_err(AppError::Other)?;
+    Ok(Json(json!({ "ok": true })))
+}
+
 pub async fn status(State(st): State<AppState>) -> Json<Value> {
     Json(json!({
         "name": "Evergreen Server",

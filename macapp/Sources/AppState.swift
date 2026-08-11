@@ -122,6 +122,13 @@ final class AppState: ObservableObject {
         await refreshJobs()
     }
 
+    /// Runs a refresh pass now — the "I unlocked it" button on a blocked (locked) renewal.
+    func retryRefreshNow() async {
+        try? await client.runRefresh()
+        await refreshJobs()
+        await refreshInstallations()
+    }
+
     private var lastAppIdAttempt: Date?
 
     /// Loads the actual App ID state from the Apple account (only when logged in). The

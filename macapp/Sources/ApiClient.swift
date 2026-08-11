@@ -29,10 +29,11 @@ actor ApiClient {
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
-            throw ApiError(message: "Nedostupný server: \(error.localizedDescription)")
+            throw ApiError(message: L.t("Nedostupný server: \(error.localizedDescription)",
+                                        "Server unreachable: \(error.localizedDescription)"))
         }
         guard let http = response as? HTTPURLResponse else {
-            throw ApiError(message: "Neplatná odpověď serveru")
+            throw ApiError(message: L.t("Neplatná odpověď serveru", "Invalid server response"))
         }
         guard (200..<300).contains(http.statusCode) else {
             // The server returns errors as {"error": "..."}.
@@ -139,6 +140,11 @@ actor ApiClient {
         _ = try await send(req)
     }
 
+    /// Runs a refresh pass now (the "I unlocked it" button on a blocked job).
+    func runRefresh() async throws {
+        try await postNoBody("api/refresh/run")
+    }
+
     /// The actual App ID state from the Apple account (slow — round-trip to Apple).
     func accountAppIds() async throws -> AppIdInfo {
         var req = URLRequest(url: url("api/appids"))
@@ -182,7 +188,7 @@ actor ApiClient {
                 throw ApiError(message: msg)
             }
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw ApiError(message: "Upload selhal (HTTP \(code))")
+            throw ApiError(message: L.t("Upload selhal (HTTP \(code))", "Upload failed (HTTP \(code))"))
         }
         return try JSONDecoder().decode(Ipa.self, from: data)
     }
