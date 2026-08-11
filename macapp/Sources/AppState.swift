@@ -124,13 +124,14 @@ final class AppState: ObservableObject {
 
     private var lastAppIdAttempt: Date?
 
-    /// Loads the actual App ID state from the Apple account (only when logged in).
-    /// Safeguard: don't hit the Apple token endpoint often — otherwise throttle -22411 may occur.
+    /// Loads the actual App ID state from the Apple account (only when logged in). The
+    /// first call obtains and caches the Xcode token (valid ~a year); after that it's
+    /// cheap. (The earlier "-22411" wasn't a throttle but a stale session, now auto-healed.)
     func refreshAppIds(force: Bool = false) async {
         guard account?.authState == "logged_in" else { appIdInfo = nil; return }
-        // If we already have data, don't reload automatically. Retry only manually (force).
+        // Load once per session; refresh only on explicit request (force).
         if appIdInfo != nil && !force { return }
-        // Don't retry more often than once every 5 minutes (except on manual force).
+        // Light guard against rapid repeats if a load fails (except on manual force).
         if let last = lastAppIdAttempt, !force, Date().timeIntervalSince(last) < 300 { return }
         lastAppIdAttempt = Date()
         appIdLoading = true

@@ -74,6 +74,13 @@ final class ServerController: ObservableObject {
         }
         state = .starting
 
+        // Fast path: if the agent is already up and running our exact version, just
+        // connect — no need to bootout/bootstrap it again (that costs ~10 s at launch).
+        if let running = await runningServerVersion(), running == Self.appVersion {
+            state = .running
+            return
+        }
+
         // The launchctl calls block until each subprocess exits, so run the whole
         // install-and-load off the main thread — otherwise the UI beachballs at launch.
         let binaryPath = binary.path
@@ -160,6 +167,24 @@ final class ServerController: ObservableObject {
         } catch {
             return -1
         }
+    }
+
+    /// This app's marketing version (matched against the running server to decide whether
+    /// a restart is needed).
+    static var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+    }
+
+    /// Version reported by an already-running server, or nil if none is responding.
+    private func runningServerVersion() async -> String? {
+        var req = URLRequest(url: localBaseURL.appendingPathComponent("api/status"))
+        req.timeoutInterval = 2
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              let http = resp as? HTTPURLResponse, http.statusCode == 200,
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let v = obj["version"] as? String
+        else { return nil }
+        return v
     }
 
     private func waitForHealth(timeout seconds: Double) async -> Bool {

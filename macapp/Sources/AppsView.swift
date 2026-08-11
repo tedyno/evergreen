@@ -128,10 +128,20 @@ struct FreeAccountCard: View {
                 Spacer()
                 if state.appIdLoading && state.appIdInfo == nil {
                     ProgressView().controlSize(.small)
-                } else if let info = state.appIdInfo {
-                    Text("\(info.count)/\(info.max)")
-                        .font(.title3.monospacedDigit())
-                        .foregroundStyle(info.count >= info.max ? .red : .primary)
+                } else {
+                    if let info = state.appIdInfo {
+                        Text("\(info.count)/\(info.max)")
+                            .font(.title3.monospacedDigit())
+                            .foregroundStyle(info.count >= info.max ? .red : .primary)
+                    }
+                    Button {
+                        Task { await state.refreshAppIds(force: true) }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .help(state.t("Obnovit z Apple", "Refresh from Apple"))
                 }
             }
 
@@ -155,17 +165,12 @@ struct FreeAccountCard: View {
                         }
                     }
                 }
-            } else if !state.appIdLoading {
-                Text(state.t("Načte se z Apple až na vyžádání (appka po startu Apple sama nekontaktuje).", "Loaded from Apple on demand (the app doesn't contact Apple on its own after launch)."))
-                    .font(.caption2).foregroundStyle(.secondary)
-                Button(state.t("Načíst stav z Apple", "Load state from Apple")) {
-                    Task { await state.refreshAppIds(force: true) }
-                }
-                .controlSize(.small)
             }
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.secondary.opacity(0.08)))
+        // Load the account's App ID state automatically (cheap after the token is cached).
+        .task { await state.refreshAppIds() }
     }
 }
 
