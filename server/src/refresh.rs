@@ -20,9 +20,9 @@ pub fn spawn(st: AppState) {
             if let Err(e) = tick(&st).await {
                 tracing::error!("refresh tick selhal: {e:?}");
             }
-            // While something is waiting for the iPad to be unlocked, re-check often so
+            // While something is waiting for the iPad to be unlocked, re-check every 30 s so
             // the renewal fires soon after unlock; otherwise the normal hourly cadence.
-            let delay = if any_blocked(&st).await { 60 } else { 3600 };
+            let delay = if any_blocked(&st).await { 30 } else { 3600 };
             tokio::time::sleep(Duration::from_secs(delay)).await;
         }
     });
