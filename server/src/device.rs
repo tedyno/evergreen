@@ -285,7 +285,13 @@ where
 
     if !status.success() {
         let tail: String = stderr.lines().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join(" | ");
-        anyhow::bail!("devicectl selhal ({}): {}", status, tail);
+        // A dropped connection mid-transfer usually means the iPad locked or left Wi-Fi.
+        let hint = if tail.contains("Connection invalid") || tail.contains("unexpectedly closed") {
+            " — iPad se nejspíš během instalace zamkl nebo vypadl z Wi-Fi; nech ho odemčený a na síti"
+        } else {
+            ""
+        };
+        anyhow::bail!("devicectl selhal ({status}): {tail}{hint}");
     }
     progress(100, "Hotovo".into()).await;
     Ok(())

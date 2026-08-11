@@ -31,6 +31,28 @@ pub async fn enqueue(st: &AppState, device_udid: &str, ipa_id: &str, kind: &str)
     Ok(job)
 }
 
+/// Records a refresh that couldn't run because the iPad is locked, as a `blocked` job —
+/// no worker runs it; it exists so the app can notify the user to unlock the device.
+pub async fn enqueue_blocked(st: &AppState, device_udid: &str, ipa_id: &str, message: &str) -> AppResult<Job> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let id: i64 = sqlx::query_scalar(
+        "INSERT INTO job (kind, device_udid, ipa_id, status, message, created_at, updated_at)
+         VALUES ('refresh', ?, ?, 'blocked', ?, ?, ?) RETURNING id",
+    )
+    .bind(device_udid)
+    .bind(ipa_id)
+    .bind(message)
+    .bind(&now)
+    .bind(&now)
+    .fetch_one(&st.db)
+    .await?;
+    let job = sqlx::query_as::<_, Job>("SELECT * FROM job WHERE id = ?")
+        .bind(id)
+        .fetch_one(&st.db)
+        .await?;
+    Ok(job)
+}
+
 /// Starts a worker for the given job in the background (fire-and-forget tokio task).
 pub fn spawn_worker(st: AppState, job_id: i64) {
     let jobs = st.running_jobs.clone();

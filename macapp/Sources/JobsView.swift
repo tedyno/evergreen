@@ -94,6 +94,7 @@ struct JobRow: View {
             case "error": return (state.t("chyba", "error"), .red)
             case "running": return (state.t("běží", "running"), .blue)
             case "queued": return (state.t("ve frontě", "queued"), .secondary)
+            case "blocked": return (state.t("čeká — zamčeno", "waiting — locked"), .orange)
             default: return (job.status, .secondary)
             }
         }()

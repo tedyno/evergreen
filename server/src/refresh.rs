@@ -61,16 +61,36 @@ async fn tick(st: &AppState) -> anyhow::Result<()> {
 
         // USB works even when the iPad is locked; over Wi-Fi, iOS refuses to install on a
         // locked device — so only proceed wirelessly once we can confirm it's unlocked.
-        // Otherwise skip quietly and retry next hour: it renews the next time the iPad is
-        // unlocked (which, within the 7-day window, always happens in normal use).
-        if !crate::device::has_usb(&device).await
-            && crate::device::is_locked(&device).await != Some(false)
-        {
-            tracing::debug!(
-                "refresh: iPad {} zamčený (jen Wi-Fi), obnovím po odemčení",
-                inst.device_udid
-            );
-            continue;
+        if !crate::device::has_usb(&device).await {
+            match crate::device::is_locked(&device).await {
+                Some(false) => {} // unlocked → proceed to renew
+                Some(true) => {
+                    // Locked: record it once (not every hour) so the app can nudge the
+                    // user to unlock. It renews on the next unlock.
+                    let latest: Option<String> = sqlx::query_scalar(
+                        "SELECT status FROM job WHERE device_udid = ? AND ipa_id = ? AND kind = 'refresh'
+                         ORDER BY id DESC LIMIT 1",
+                    )
+                    .bind(&inst.device_udid)
+                    .bind(&inst.ipa_id)
+                    .fetch_optional(&st.db)
+                    .await?;
+                    if latest.as_deref() != Some("blocked") {
+                        tracing::info!("refresh: iPad {} zamčený — čekám na odemčení", inst.device_udid);
+                        let _ = crate::jobs::enqueue_blocked(
+                            st, &inst.device_udid, &inst.ipa_id,
+                            "iPad je zamčený — odemkni ho pro obnovu",
+                        )
+                        .await;
+                    }
+                    continue;
+                }
+                None => {
+                    // Unreachable / can't tell — retry later, quietly.
+                    tracing::debug!("refresh: iPad {} nedosažitelný, zkusím později", inst.device_udid);
+                    continue;
+                }
+            }
         }
 
         tracing::info!(

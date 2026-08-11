@@ -271,14 +271,34 @@ final class AppState: ObservableObject {
 
         for job in jobs {
             let prev = lastJobStatus[job.id]
-            if primed, job.status == "error", prev != "error" {
+            let appName = ipas.first { $0.id == job.ipaId }?.name ?? ""
+            if primed, prev == nil, job.kind == "refresh", job.status == "blocked" {
+                // Scheduler wanted to renew but the iPad is locked.
                 NotificationManager.shared.post(
-                    title: t("Evergreen: úloha selhala", "Evergreen: job failed"),
+                    title: t("Evergreen: odemkni iPad", "Evergreen: unlock your iPad"),
+                    body: appName.isEmpty
+                        ? t("iPad je zamčený — odemkni ho pro obnovu.", "Your iPad is locked — unlock it to renew.")
+                        : t("iPad je zamčený — odemkni ho pro obnovu \(appName).", "Your iPad is locked — unlock it to renew \(appName)."))
+            } else if primed, prev == nil, job.kind == "refresh", job.status == "queued" || job.status == "running" {
+                // Automatic renewal just started.
+                NotificationManager.shared.post(
+                    title: t("Evergreen: obnova", "Evergreen: renewal"),
+                    body: appName.isEmpty
+                        ? t("Zahajuji obnovu…", "Starting renewal…")
+                        : t("Zahajuji obnovu \(appName)…", "Renewing \(appName)…"))
+            } else if primed, job.status == "error", prev != "error" {
+                let title = job.kind == "refresh"
+                    ? t("Evergreen: obnova selhala", "Evergreen: renewal failed")
+                    : t("Evergreen: instalace selhala", "Evergreen: install failed")
+                NotificationManager.shared.post(
+                    title: title,
                     body: job.message ?? t("Podpis/instalace se nezdařila.", "Signing/install failed."))
             } else if primed, job.status == "done", prev != "done", job.kind == "refresh" {
                 NotificationManager.shared.post(
                     title: t("Evergreen: appka obnovena", "Evergreen: app renewed"),
-                    body: job.message ?? t("Profil byl obnoven před vypršením.", "The profile was renewed before expiring."))
+                    body: appName.isEmpty
+                        ? t("Profil byl obnoven.", "The profile was renewed.")
+                        : t("\(appName): profil obnoven.", "\(appName): profile renewed."))
             }
             lastJobStatus[job.id] = job.status
         }
