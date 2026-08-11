@@ -26,6 +26,7 @@ Why the engine is in Rust: all the heavy iOS/Apple protocol libraries live there
 ## Requirements
 
 - **macOS** (Ventura or newer).
+- **iPad/iPhone with Developer Mode ON** (iOS 16+): Settings → Privacy & Security → Developer Mode → on, then restart the device. Required to install development-signed apps.
 - **Xcode** (or its `devicectl`, from the Command Line Tools) is required **only for wireless (Wi-Fi) install** — Evergreen hands the transfer to Apple's `devicectl` over the CoreDevice tunnel. **USB install needs no Xcode.** Without it, the app shows a warning and you install over a cable.
 - A free **Apple ID** (used to sign; each user signs in with their own).
 

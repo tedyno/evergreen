@@ -57,6 +57,7 @@ struct PairSheet: View {
                 .font(.headline)
 
             VStack(alignment: .leading, spacing: 6) {
+                Label(state.t("Zapni Developer Mode (iOS 16+): Nastavení → Soukromí a zabezpečení → Režim pro vývojáře → restart.", "Enable Developer Mode (iOS 16+): Settings → Privacy & Security → Developer Mode → restart."), systemImage: "hammer")
                 Label(state.t("Připoj iPad USB kabelem a odemkni ho.", "Connect the iPad via USB cable and unlock it."), systemImage: "1.circle")
                 Label(state.t("Klikni na Spárovat — na iPadu potvrď „Trust / Důvěřovat“ a zadej kód.", "Click Pair — on the iPad confirm “Trust” and enter the passcode."), systemImage: "2.circle")
                 Label(state.t("IP adresu iPadu zjistí Evergreen sám.", "Evergreen detects the iPad’s IP address by itself."), systemImage: "wifi")
