@@ -7,8 +7,8 @@ options:
   createIntermediateGroups: true
 settings:
   base:
-    MARKETING_VERSION: "0.2.0"
-    CURRENT_PROJECT_VERSION: "2"
+    MARKETING_VERSION: "0.2.1"
+    CURRENT_PROJECT_VERSION: "3"
     DEVELOPMENT_TEAM: ""              # necháno prázdné — appka se nenotarizuje
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "-"           # ad-hoc podpis, žádný účet potřeba
