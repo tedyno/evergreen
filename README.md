@@ -37,9 +37,11 @@ Evergreen is **not notarized** (no paid Apple Developer account), so macOS Gatek
 
 ```sh
 brew tap tedyno/evergreen
-brew trust tedyno/evergreen   # Homebrew requires explicit trust for third-party taps
+brew trust tedyno/evergreen
 brew install --cask evergreen
 ```
+
+The middle step isn't a formality: since version 6, Homebrew refuses to load a cask from a third-party tap until you say you trust it. The cask lives in its own tap ([`tedyno/homebrew-evergreen`](https://github.com/tedyno/homebrew-evergreen)); Evergreen can't live in the official `homebrew/cask` tap, which from 2026-09-01 accepts only notarized apps.
 
 **Manual:** download `Evergreen-<version>.zip` from [Releases](https://github.com/tedyno/evergreen/releases), unzip, drag `Evergreen.app` into `/Applications`.
 
