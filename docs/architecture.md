@@ -4,7 +4,7 @@
 
 ```
 ┌─────────────┐ upload IPA, 2FA, management ┌──────────────────────────────┐
-│   browser   │ ──────────────────────────► │  homesign server (Docker)    │
+│   browser   │ ──────────────────────────► │  evergreen server                  │
 └─────────────┘          web UI             │                              │
                                             │  axum web UI + REST API      │
 ┌─────────────┐   catalog, "install"        │  SQLite (state, queues)      │
@@ -40,8 +40,8 @@
 1. The IPA is uploaded from the app.
 2. Server: unpacks → rewrites the bundle ID to its own App ID → generates/downloads a provisioning profile → signs (including nested frameworks and extensions) → recomputes CodeResources.
 3. The server installs on the iPad, choosing the transport:
-   - **USB** (preferred): direct AFC upload into PublicStaging + `installation_proxy`, over usbmux — bypasses the userspace tunnel, so bulk transfer is fast.
-   - **Wi-Fi** (iOS 17+): RemotePairing verify → TLS-PSK tunnel → userspace TCP stack (jktcp) → RSD → AFC + `installation_proxy` over the tunnel.
+   - **USB** (preferred): direct AFC upload into PublicStaging + `installation_proxy`, over usbmux — fast.
+   - **Wi-Fi** (iOS 17+): the signed IPA is unpacked to its `.app` and handed to Apple's `xcrun devicectl device install app`, which uses the CoreDevice tunnel macOS already maintains to the paired device. Needs Xcode / Command Line Tools; no custom tunnel and no suspending of system daemons.
 
 ### Refresh (automatic)
 - The scheduler tracks the profile expiration for each installed app.

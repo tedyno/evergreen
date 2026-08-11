@@ -12,14 +12,14 @@ From zero to an app that keeps itself alive on your iPad. Everything runs native
 ## 1. Build & run the app
 
 ```bash
-cargo build --release -p homesign-server      # build the engine
+cargo build --release -p evergreen-server      # build the engine
 cd macapp && xcodegen generate                 # generate the Xcode project
 xcodebuild -project Evergreen.xcodeproj -scheme Evergreen -configuration Debug \
   -derivedDataPath build build                 # build the app (embeds the server)
 open build/Build/Products/Debug/Evergreen.app
 ```
 
-The app launches the embedded server on `127.0.0.1:8080` and stores its data in `~/Library/Application Support/homesign`.
+The app launches the embedded server on `127.0.0.1:8080` and stores its data in `~/Library/Application Support/evergreen`.
 
 ## 2. Pair the iPad (once, over USB)
 

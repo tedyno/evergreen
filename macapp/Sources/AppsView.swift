@@ -15,6 +15,17 @@ struct AppsView: View {
                     FreeAccountCard()
                 }
 
+                if state.status?.wireless == false {
+                    Label(state.t("Bezdrátová (Wi-Fi) instalace vyžaduje nainstalovaný Xcode. Bez něj instaluj přes USB kabel.",
+                                  "Wireless (Wi-Fi) install requires Xcode to be installed. Without it, install over a USB cable."),
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.orange.opacity(0.12)))
+                }
+
                 dropZone
 
                 if let p = state.uploadProgress {

@@ -1,4 +1,4 @@
-//! homesign server — self-hosted sideloading for iPad/iPhone.
+//! evergreen server — self-hosted sideloading for iPad/iPhone.
 //! See docs/architecture.md.
 
 mod apple;
@@ -26,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "homesign_server=info,tower_http=warn".into()),
+                .unwrap_or_else(|_| "evergreen_server=info,tower_http=warn".into()),
         )
         .init();
 
@@ -57,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
 
     let app = web::router(state);
     let listener = tokio::net::TcpListener::bind(cfg.bind).await?;
-    tracing::info!("homesign poslouchá na http://{}", cfg.bind);
+    tracing::info!("evergreen poslouchá na http://{}", cfg.bind);
     axum::serve(listener, app).await?;
     Ok(())
 }

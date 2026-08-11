@@ -12,9 +12,11 @@ use crate::{ipa as ipautil, jobs};
 
 pub async fn status() -> Json<Value> {
     Json(json!({
-        "name": "homesign",
+        "name": "Evergreen Server",
         "version": env!("CARGO_PKG_VERSION"),
         "ok": true,
+        // Wireless (Wi-Fi) install needs Apple's devicectl, i.e. Xcode installed.
+        "wireless": crate::device::devicectl_available(),
     }))
 }
 
@@ -248,17 +250,8 @@ pub async fn pair_usb(
     .execute(&st.db)
     .await?;
 
-    // Also create the RemotePairing record needed for wireless installs (iOS 17+).
-    // Best-effort: the device is already trusted, so USB installs keep working even
-    // if this second pairing is declined.
-    let rp_path = crate::pairing::rp_pairing_path(&path.to_string_lossy());
-    let wireless_ready = match crate::pairing::create_rp_pairing(&res.udid, &rp_path).await {
-        Ok(()) => true,
-        Err(e) => {
-            tracing::warn!("RemotePairing (bezdrát) se nepodařilo vytvořit: {e:?}");
-            false
-        }
-    };
+    // Wireless installs use Apple's devicectl (Xcode / Command Line Tools).
+    let wireless_ready = crate::device::devicectl_available();
 
     Ok(Json(json!({
         "udid": res.udid,

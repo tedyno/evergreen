@@ -60,7 +60,7 @@ struct PairSheet: View {
                 Label(state.t("Připoj iPad USB kabelem a odemkni ho.", "Connect the iPad via USB cable and unlock it."), systemImage: "1.circle")
                 Label(state.t("Klikni na Spárovat — na iPadu potvrď „Trust / Důvěřovat“ a zadej kód.", "Click Pair — on the iPad confirm “Trust” and enter the passcode."), systemImage: "2.circle")
                 Label(state.t("IP adresu iPadu zjistí Evergreen sám.", "Evergreen detects the iPad’s IP address by itself."), systemImage: "wifi")
-                Label(state.t("Pro bezdrátovou instalaci potvrď „Trust“ i podruhé (RemotePairing).", "For wireless install, confirm “Trust” a second time too (RemotePairing)."), systemImage: "antenna.radiowaves.left.and.right")
+                Label(state.t("Bezdrátová instalace funguje jen s nainstalovaným Xcode (devicectl).", "Wireless install works only with Xcode installed (devicectl)."), systemImage: "antenna.radiowaves.left.and.right")
             }
             .font(.callout)
             .foregroundStyle(.secondary)
@@ -106,10 +106,10 @@ struct PairSheet: View {
                 Label(state.t("Spárováno: \(name)", "Paired: \(name)"), systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
                 if wireless {
-                    Label(state.t("Bezdrátová instalace připravena (RemotePairing).", "Wireless install ready (RemotePairing)."), systemImage: "wifi")
+                    Label(state.t("Bezdrátová instalace připravena (Xcode/devicectl nalezen).", "Wireless install ready (Xcode/devicectl found)."), systemImage: "wifi")
                         .font(.caption).foregroundStyle(.green)
                 } else {
-                    Label(state.t("Bezdrátovou instalaci se nepodařilo povolit — funguje instalace přes USB.", "Wireless install couldn’t be enabled — USB install works."), systemImage: "wifi.slash")
+                    Label(state.t("Bezdrát nedostupný — chybí Xcode. Instaluj přes USB.", "Wireless unavailable — Xcode missing. Install over USB."), systemImage: "wifi.slash")
                         .font(.caption).foregroundStyle(.orange)
                 }
                 if let addr {

@@ -1,7 +1,11 @@
 import Foundation
 
-/// Launches and supervises the bundled `homesign-server` as a subprocess. Lets you keep
-/// "everything inside the Mac app" — no Docker, no manual terminal.
+/// Runs `evergreen-server` as a per-user LaunchAgent (`com.evergreen.server`), so the
+/// engine — and therefore the refresh scheduler that keeps apps alive — stays up even
+/// when Evergreen (the UI) is closed, and starts again at login.
+///
+/// The agent is installed by the app but owned by a stable, well-known plist path, so a
+/// Homebrew Cask can tear it down on uninstall (`launchctl` + `delete` the plist).
 @MainActor
 final class ServerController: ObservableObject {
     enum State: Equatable {
@@ -16,7 +20,9 @@ final class ServerController: ObservableObject {
     /// Port the local server listens on (loopback only).
     let port: Int = 8080
 
-    private var process: Process?
+    /// Well-known LaunchAgent identity — must match the Homebrew Cask uninstall stanza.
+    static let agentLabel = "com.evergreen.server"
+
     private let logURL: URL
 
     var localBaseURL: URL {
@@ -31,19 +37,35 @@ final class ServerController: ObservableObject {
 
     static func appSupportDir() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = base.appendingPathComponent("homesign", isDirectory: true)
+        let dir = base.appendingPathComponent("evergreen", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }
 
+    private static func launchAgentsDir() -> URL {
+        let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
+        let dir = base.appendingPathComponent("LaunchAgents", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    static var agentPlistURL: URL {
+        launchAgentsDir().appendingPathComponent("\(agentLabel).plist")
+    }
+
     /// The bundled server binary (in the app's Resources).
     private func serverBinaryURL() -> URL? {
-        Bundle.main.url(forResource: "homesign-server", withExtension: nil)
+        Bundle.main.url(forResource: "evergreen-server", withExtension: nil)
+    }
+
+    var isAgentInstalled: Bool {
+        FileManager.default.fileExists(atPath: Self.agentPlistURL.path)
     }
 
     // MARK: - lifecycle
 
-    /// Starts the server (if not already running) and waits until the health check responds.
+    /// Installs (or refreshes) the LaunchAgent and makes sure it's running, then waits
+    /// for the health check. Idempotent — safe to call on every app launch.
     func startIfNeeded() async {
         guard state != .running && state != .starting else { return }
         guard let binary = serverBinaryURL() else {
@@ -52,46 +74,76 @@ final class ServerController: ObservableObject {
         }
         state = .starting
 
-        let dataDir = Self.appSupportDir()
-        let proc = Process()
-        proc.executableURL = binary
-        proc.environment = [
-            "HOMESIGN_DATA": dataDir.path,
-            "HOMESIGN_BIND": "127.0.0.1:\(port)",
-            "RUST_LOG": "info",
-            // We don't set ANISETTE_URL — on macOS the native AOSKit provider wins.
-        ]
-
-        // Redirect the server's logs to a file.
-        FileManager.default.createFile(atPath: logURL.path, contents: nil)
-        if let handle = try? FileHandle(forWritingTo: logURL) {
-            proc.standardOutput = handle
-            proc.standardError = handle
-        }
-
-        proc.terminationHandler = { [weak self] p in
-            Task { @MainActor in
-                guard let self else { return }
-                if self.state == .running || self.state == .starting {
-                    self.state = .failed("Server skončil (kód \(p.terminationStatus))")
-                }
-            }
-        }
-
         do {
-            try proc.run()
-            process = proc
+            try writeAgentPlist(binaryPath: binary.path)
         } catch {
-            state = .failed("Nelze spustit server: \(error.localizedDescription)")
+            state = .failed("Nelze zapsat LaunchAgent: \(error.localizedDescription)")
             return
         }
+        loadAgent()
 
-        // Health check: wait until the server responds on /api/status.
         if await waitForHealth(timeout: 15) {
             state = .running
         } else {
             state = .failed("Server nenaběhl včas — viz \(logURL.path)")
-            stop()
+        }
+    }
+
+    /// Writes the LaunchAgent plist pointing at the bundled binary.
+    private func writeAgentPlist(binaryPath: String) throws {
+        let plist: [String: Any] = [
+            "Label": Self.agentLabel,
+            "ProgramArguments": [binaryPath],
+            "EnvironmentVariables": [
+                "EVERGREEN_DATA": Self.appSupportDir().path,
+                "EVERGREEN_BIND": "127.0.0.1:\(port)",
+                "RUST_LOG": "info",
+                // No ANISETTE_URL — on macOS the native AOSKit provider wins.
+            ],
+            "RunAtLoad": true,
+            "KeepAlive": true,
+            "StandardOutPath": logURL.path,
+            "StandardErrorPath": logURL.path,
+            "ProcessType": "Background",
+        ]
+        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        try data.write(to: Self.agentPlistURL)
+    }
+
+    /// (Re)loads the agent so it picks up the current plist.
+    private func loadAgent() {
+        let domain = "gui/\(getuid())"
+        let target = "\(domain)/\(Self.agentLabel)"
+        // Boot out any previous instance so bootstrap can re-read the plist.
+        _ = Self.runLaunchctl(["bootout", target])
+        _ = Self.runLaunchctl(["bootstrap", domain, Self.agentPlistURL.path])
+        _ = Self.runLaunchctl(["enable", target])
+        _ = Self.runLaunchctl(["kickstart", "-k", target])
+    }
+
+    /// Stops and removes the background agent entirely (used by the Settings toggle and
+    /// mirrored by the Homebrew Cask uninstall).
+    func uninstallAgent() {
+        _ = Self.runLaunchctl(["bootout", "gui/\(getuid())/\(Self.agentLabel)"])
+        try? FileManager.default.removeItem(at: Self.agentPlistURL)
+        state = .stopped
+    }
+
+    /// No-op on app termination: the whole point is that the agent keeps running so the
+    /// refresh scheduler survives the UI being closed.
+    func stop() {}
+
+    @discardableResult
+    private static func runLaunchctl(_ args: [String]) -> Int32 {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        p.arguments = args
+        do {
+            try p.run()
+            p.waitUntilExit()
+            return p.terminationStatus
+        } catch {
+            return -1
         }
     }
 
@@ -108,16 +160,5 @@ final class ServerController: ObservableObject {
             try? await Task.sleep(nanoseconds: 400_000_000)
         }
         return false
-    }
-
-    /// Stops the server (SIGTERM). Called when the app terminates.
-    func stop() {
-        guard let proc = process, proc.isRunning else { return }
-        proc.terminationHandler = nil
-        proc.terminate()
-        process = nil
-        if state == .running || state == .starting {
-            state = .stopped
-        }
     }
 }

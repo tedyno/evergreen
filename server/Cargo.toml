@@ -1,5 +1,5 @@
 [package]
-name = "homesign-server"
+name = "evergreen-server"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
@@ -27,9 +27,8 @@ base64 = "0.22"
 
 # Device + Apple vrstvy (integrace v M1/M2). Zapnuté rovnou, ať CI staví celý strom.
 idevice = { workspace = true, features = [
-    "tcp", "usbmuxd", "afc", "installation_proxy", "core_device",
-    "core_device_proxy", "rsd", "xpc", "tunnel_tcp_stack", "pair",
-    "remote_pairing",
+    "tcp", "usbmuxd", "afc", "installation_proxy",
+    "core_device_proxy", "pair",
 ] }
 icloud_auth.workspace = true
 omnisette.workspace = true

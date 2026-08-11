@@ -6,6 +6,8 @@ struct ServerStatus: Decodable {
     let name: String
     let version: String
     let ok: Bool
+    /// Whether wireless (Wi-Fi) install is available — needs Apple's devicectl (Xcode).
+    let wireless: Bool?
 }
 
 struct Account: Decodable {

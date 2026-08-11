@@ -1,7 +1,7 @@
 # XcodeGen projekt pro nativní macOS klienta. Generování: `xcodegen generate`.
 name: Evergreen
 options:
-  bundleIdPrefix: cz.homesign
+  bundleIdPrefix: com.evergreen
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
@@ -32,20 +32,20 @@ targets:
         # App Sandbox vypnutý kvůli přímému HTTP na LAN + výběru souborů.
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: cz.homesign.mac
+        PRODUCT_BUNDLE_IDENTIFIER: com.evergreen.app
         INFOPLIST_KEY_NSHumanReadableCopyright: ""
         ENABLE_APP_SANDBOX: NO
     postBuildScripts:
-      - name: "Embed homesign-server binary"
+      - name: "Embed evergreen-server binary"
         basedOnDependencyAnalysis: false
         script: |
           set -e
           DEST="$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
           mkdir -p "$DEST"
-          SRC="$SRCROOT/../target/release/homesign-server"
+          SRC="$SRCROOT/../target/release/evergreen-server"
           if [ ! -f "$SRC" ]; then
-            echo "error: chybí $SRC — spusť 'cargo build --release -p homesign-server'"
+            echo "error: chybí $SRC — spusť 'cargo build --release -p evergreen-server'"
             exit 1
           fi
-          cp -f "$SRC" "$DEST/homesign-server"
-          chmod +x "$DEST/homesign-server"
+          cp -f "$SRC" "$DEST/evergreen-server"
+          chmod +x "$DEST/evergreen-server"

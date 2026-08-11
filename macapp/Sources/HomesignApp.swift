@@ -86,15 +86,12 @@ struct MenuBarContent: View {
     }
 }
 
-/// Ensures the embedded server is shut down cleanly when the app closes.
+/// The server runs as a background LaunchAgent, so closing the app intentionally leaves
+/// it running — that's what keeps the refresh scheduler (and thus the apps) alive.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var server: ServerController?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
-    }
-
-    func applicationWillTerminate(_ notification: Notification) {
-        server?.stop()
     }
 }

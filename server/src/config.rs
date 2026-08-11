@@ -22,11 +22,11 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> anyhow::Result<Self> {
         // Loopback default — the server has no auth layer, so it must not listen on the whole network.
-        let bind = std::env::var("HOMESIGN_BIND")
+        let bind = std::env::var("EVERGREEN_BIND")
             .unwrap_or_else(|_| "127.0.0.1:8080".to_string())
             .parse()?;
         let data_dir = PathBuf::from(
-            std::env::var("HOMESIGN_DATA").unwrap_or_else(|_| "./data".to_string()),
+            std::env::var("EVERGREEN_DATA").unwrap_or_else(|_| "./data".to_string()),
         );
         std::fs::create_dir_all(&data_dir)?;
         std::fs::create_dir_all(data_dir.join("ipa"))?;
@@ -37,7 +37,7 @@ impl Config {
 
         let master_key = load_or_create_master_key(&data_dir)?;
 
-        let refresh_before_days = std::env::var("HOMESIGN_REFRESH_BEFORE_DAYS")
+        let refresh_before_days = std::env::var("EVERGREEN_REFRESH_BEFORE_DAYS")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(1);
@@ -46,7 +46,7 @@ impl Config {
     }
 
     pub fn db_url(&self) -> String {
-        format!("sqlite://{}?mode=rwc", self.data_dir.join("homesign.db").display())
+        format!("sqlite://{}?mode=rwc", self.data_dir.join("evergreen.db").display())
     }
 
     pub fn ipa_dir(&self) -> PathBuf {

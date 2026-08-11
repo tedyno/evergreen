@@ -23,6 +23,11 @@ Why the engine is in Rust: all the heavy iOS/Apple protocol libraries live there
 4. The server keeps a copy of the cert + profile, so subsequent re-signs are **offline** (no Apple round-trip) until the profile expires.
 5. A **refresh scheduler** re-signs and reinstalls before the 7-day profile expires (upgrade preserves app data). This is logged like any other job.
 
+## Requirements
+
+- **macOS** with the Rust toolchain (to build). The server runs natively — no Docker.
+- **Xcode** (or its `devicectl`, from the Command Line Tools) is required **only for wireless (Wi-Fi) install** — Evergreen hands the transfer to Apple's `devicectl` over the CoreDevice tunnel. **USB install needs no Xcode.** Without it, the app shows a warning and you install over a cable.
+
 ## Free Apple ID limits
 
 7-day provisioning profiles, 3 active App IDs on a device, 10 new App IDs per week. Evergreen reuses the certificate and only contacts Apple for a fresh profile (~every 6 days).
@@ -34,11 +39,7 @@ Works, verified end-to-end on a real iPad (iOS 26) over USB:
 - ✅ Native macOS app that starts/stops the embedded server; Apple ID login survives restarts (encrypted session on disk).
 - ✅ USB pairing and automatic Wi-Fi IP detection, both from the app.
 - ✅ Full re-sign pipeline: GSA auth (incl. the encrypted Xcode token), Developer Services (device / cert / App ID / profile), bundle-id rewrite, per-framework `codesign` + local verification. Offline re-sign from stored cert+profile (also sidesteps Apple's `-22411` rate limit).
-- ✅ Transfer + install over **direct AFC** (usbmux) — the userspace tunnel stalls on bulk transfer, so we bypass it over USB.
+- ✅ Install over **USB** (direct AFC via usbmux — fast) or **Wi-Fi** (Apple's `devicectl` / CoreDevice tunnel — needs Xcode). The app picks USB when a cable is present, otherwise Wi-Fi.
 - ✅ Resign log (Jobs) with time / status / MB progress / errors, cancellable.
-
-Not done yet:
-
-- ⏳ **Wireless install/refresh.** iOS 17+ over the network needs the RemotePairing subsystem (its own Ed25519 pairing with a PIN on the device, TLS-PSK tunnel). And bulk transfer would go through the same tunnel that stalls over USB — an open upstream issue in the userspace TCP stack. Currently install/refresh works over USB.
 
 > Note: the `idevice` library has its own [AI policy](https://github.com/jkcoxson/idevice/blob/master/AI.md) — contributions to it require the code author to understand the code and write PR descriptions by hand.

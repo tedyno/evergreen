@@ -132,7 +132,7 @@ struct SettingsView: View {
             Text(state.t("Server", "Server"))
                 .font(.headline)
 
-            Toggle(state.t("Spouštět vlastní server v této appce", "Run a built-in server in this app"), isOn: Binding(
+            Toggle(state.t("Spouštět server na pozadí (běží i po zavření appky)", "Run the server in the background (keeps running after you close the app)"), isOn: Binding(
                 get: { state.useLocalServer },
                 set: { newValue in
                     Task {
@@ -141,7 +141,7 @@ struct SettingsView: View {
                             await server.startIfNeeded()
                             await state.activate(baseURL: server.localBaseURL)
                         } else {
-                            server.stop()
+                            server.uninstallAgent()
                             await state.switchToRemote()
                         }
                     }
@@ -153,7 +153,7 @@ struct SettingsView: View {
                     serverStateIndicator
                     Text(serverStateText).font(.caption).foregroundStyle(.secondary)
                 }
-                Text(state.t("Server běží jako podproces na 127.0.0.1:\(server.port), data v Application Support. Anisette jede nativně (AOSKit), žádný Docker.", "The server runs as a subprocess on 127.0.0.1:\(server.port), data in Application Support. Anisette runs natively (AOSKit), no Docker."))
+                Text(state.t("Server běží jako LaunchAgent (com.evergreen.server) na 127.0.0.1:\(server.port) — startuje i po přihlášení a drží automatickou obnovu, i když je appka zavřená. Data v Application Support, anisette nativně (AOSKit), žádný Docker.", "The server runs as a LaunchAgent (com.evergreen.server) on 127.0.0.1:\(server.port) — it also starts at login and keeps auto-refresh going even when the app is closed. Data in Application Support, native anisette (AOSKit), no Docker."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
