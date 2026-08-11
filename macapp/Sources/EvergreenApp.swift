@@ -12,7 +12,9 @@ struct EvergreenApp: App {
     @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
 
     var body: some Scene {
-        WindowGroup {
+        // A single window (not a group) so closing it just hides the app to the menu bar
+        // instead of quitting — the polling that drives notifications keeps running.
+        Window("Evergreen", id: "main") {
             ContentView()
                 .environmentObject(state)
                 .environmentObject(server)
@@ -67,6 +69,7 @@ struct EvergreenApp: App {
 /// Menu bar dropdown: status, health summary + actions.
 struct MenuBarContent: View {
     @EnvironmentObject var state: AppState
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         if let s = state.status {
@@ -87,6 +90,7 @@ struct MenuBarContent: View {
             }
         }
         Button(state.t("Otevřít Evergreen", "Open Evergreen")) {
+            openWindow(id: "main")
             NSApp.activate(ignoringOtherApps: true)
         }
         Button(state.t("Ukončit", "Quit")) {
@@ -112,7 +116,9 @@ struct MenuBarContent: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var server: ServerController?
 
+    // Keep running when the window is closed — the menu bar icon and the notification
+    // polling stay alive. Full quit is via the menu bar "Quit".
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        false
     }
 }
