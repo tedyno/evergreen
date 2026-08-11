@@ -1,8 +1,6 @@
 cask "evergreen" do
   version "0.1.0"
-  # Replace with the real values when you cut a release:
-  #   shasum -a 256 Evergreen-<version>.zip
-  sha256 :no_check
+  sha256 "e19435e9e4c7a20568e6729234d4aaa811d9e2bc331a9c6d79e0d3f363363a0f"
 
   url "https://github.com/tedyno/evergreen/releases/download/v#{version}/Evergreen-#{version}.zip"
   name "Evergreen"

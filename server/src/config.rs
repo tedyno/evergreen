@@ -64,6 +64,9 @@ fn load_or_create_master_key(data_dir: &std::path::Path) -> anyhow::Result<[u8; 
     if let Ok(existing) = std::fs::read_to_string(&path) {
         let raw = STANDARD.decode(existing.trim())?;
         if raw.len() == 32 {
+            // Enforce owner-only perms on every load, not just at creation — an older
+            // or migrated key may still be world-readable.
+            harden_perms(&path);
             let mut key = [0u8; 32];
             key.copy_from_slice(&raw);
             return Ok(key);
@@ -73,12 +76,19 @@ fn load_or_create_master_key(data_dir: &std::path::Path) -> anyhow::Result<[u8; 
     let mut key = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut key);
     std::fs::write(&path, STANDARD.encode(key))?;
-    // The key decrypts the Apple ID password + session — owner-only (0600).
+    harden_perms(&path);
+    tracing::info!("vygenerován nový master.key v {}", path.display());
+    Ok(key)
+}
+
+/// Restricts a file to owner-only (0600) — the master.key decrypts the Apple ID
+/// password + session, so it must not be readable by other local accounts.
+fn harden_perms(path: &std::path::Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
     }
-    tracing::info!("vygenerován nový master.key v {}", path.display());
-    Ok(key)
+    #[cfg(not(unix))]
+    let _ = path;
 }

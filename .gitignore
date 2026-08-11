@@ -16,3 +16,6 @@ build/
 # Podpisové tajnosti (kdyby se objevily mimo data/)
 signing/
 xcode_token
+
+# Release artefakty
+dist/

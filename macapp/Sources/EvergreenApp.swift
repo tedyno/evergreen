@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 @main
-struct HomesignApp: App {
+struct EvergreenApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var state = AppState()
     @StateObject private var server = ServerController()

@@ -25,8 +25,27 @@ Why the engine is in Rust: all the heavy iOS/Apple protocol libraries live there
 
 ## Requirements
 
-- **macOS** with the Rust toolchain (to build). The server runs natively — no Docker.
+- **macOS** (Ventura or newer).
 - **Xcode** (or its `devicectl`, from the Command Line Tools) is required **only for wireless (Wi-Fi) install** — Evergreen hands the transfer to Apple's `devicectl` over the CoreDevice tunnel. **USB install needs no Xcode.** Without it, the app shows a warning and you install over a cable.
+- A free **Apple ID** (used to sign; each user signs in with their own).
+
+## Install
+
+Evergreen is **not notarized** (no paid Apple Developer account), so macOS Gatekeeper warns on first launch — that's expected.
+
+**Homebrew:**
+
+```sh
+brew install --cask https://raw.githubusercontent.com/tedyno/evergreen/main/packaging/Casks/evergreen.rb
+```
+
+**Manual:** download `Evergreen-<version>.zip` from [Releases](https://github.com/tedyno/evergreen/releases), unzip, drag `Evergreen.app` into `/Applications`.
+
+Either way, the **first launch** is blocked by Gatekeeper. Do one of:
+- Right-click `Evergreen.app` → **Open** → **Open** (only needed once), or
+- `xattr -dr com.apple.quarantine /Applications/Evergreen.app`
+
+The app runs the engine as a background LaunchAgent (`com.evergreen.server`), so re-signing keeps happening even when the app is closed. `brew uninstall --cask` (add `--zap` to also wipe data) removes the agent and app cleanly.
 
 ## Free Apple ID limits
 
