@@ -1,6 +1,6 @@
 cask "evergreen" do
   version "0.1.0"
-  sha256 "e19435e9e4c7a20568e6729234d4aaa811d9e2bc331a9c6d79e0d3f363363a0f"
+  sha256 "ca898a5a127bbd3e06fce95c1129e4afd8541da132608084bfe7e2c2d9c55029"
 
   url "https://github.com/tedyno/evergreen/releases/download/v#{version}/Evergreen-#{version}.zip"
   name "Evergreen"
