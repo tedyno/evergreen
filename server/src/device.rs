@@ -65,6 +65,42 @@ pub fn devicectl_available() -> bool {
         .unwrap_or(false)
 }
 
+/// True if the device is reachable over a USB cable right now (USB install works even
+/// when the screen is locked, so it's always preferred).
+pub async fn has_usb(device: &Device) -> bool {
+    usb_provider(device).await.is_some()
+}
+
+/// Current lock state via `devicectl device info lockState` (Some(true) = locked now,
+/// Some(false) = unlocked). None if it can't be determined (no Xcode / unreachable).
+/// This lightweight query works over the CoreDevice tunnel even while the device is
+/// locked — unlike a real install, which iOS refuses on a locked device.
+pub async fn is_locked(device: &Device) -> Option<bool> {
+    if !devicectl_available() {
+        return None;
+    }
+    let tmp = std::env::temp_dir().join(format!("evergreen-lock-{}.json", device.udid));
+    let out = tokio::process::Command::new("/usr/bin/xcrun")
+        .args(["devicectl", "device", "info", "lockState", "--device"])
+        .arg(&device.udid)
+        .arg("--json-output")
+        .arg(&tmp)
+        .output()
+        .await
+        .ok()?;
+    let locked = if out.status.success() {
+        tokio::fs::read(&tmp)
+            .await
+            .ok()
+            .and_then(|d| serde_json::from_slice::<serde_json::Value>(&d).ok())
+            .and_then(|v| v.get("result")?.get("passcodeRequired")?.as_bool())
+    } else {
+        None
+    };
+    let _ = tokio::fs::remove_file(&tmp).await;
+    locked
+}
+
 /// Installs (or upgrades) an already-signed IPA on the device.
 /// The callback receives (percentage 0–100 within the install phase, a text message).
 pub async fn install_signed<F, Fut>(
@@ -185,6 +221,15 @@ where
         anyhow::bail!(
             "bezdrátová instalace vyžaduje Xcode / Command Line Tools (devicectl) — \
              připoj iPad USB kabelem, nebo nainstaluj Xcode"
+        );
+    }
+
+    // iOS refuses a network install on a locked device, so fail fast with a clear
+    // message instead of a long crawl that ends in a cryptic "Connection invalid".
+    if is_locked(device).await == Some(true) {
+        anyhow::bail!(
+            "iPad je zamčený — bezdrátová instalace vyžaduje odemčený iPad. \
+             Odemkni ho a zkus znovu (nebo připoj USB kabel, ten funguje i zamčený)."
         );
     }
 

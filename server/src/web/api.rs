@@ -10,13 +10,15 @@ use crate::models::*;
 use crate::state::AppState;
 use crate::{ipa as ipautil, jobs};
 
-pub async fn status() -> Json<Value> {
+pub async fn status(State(st): State<AppState>) -> Json<Value> {
     Json(json!({
         "name": "Evergreen Server",
         "version": env!("CARGO_PKG_VERSION"),
         "ok": true,
         // Wireless (Wi-Fi) install needs Apple's devicectl, i.e. Xcode installed.
         "wireless": crate::device::devicectl_available(),
+        // How many days before a profile expires the scheduler renews it.
+        "refresh_before_days": st.cfg.refresh_before_days,
     }))
 }
 

@@ -8,6 +8,13 @@ struct ServerStatus: Decodable {
     let ok: Bool
     /// Whether wireless (Wi-Fi) install is available — needs Apple's devicectl (Xcode).
     let wireless: Bool?
+    /// Days before expiry when the scheduler auto-renews (default 1).
+    let refreshBeforeDays: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case name, version, ok, wireless
+        case refreshBeforeDays = "refresh_before_days"
+    }
 }
 
 struct Account: Decodable {

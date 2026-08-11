@@ -144,6 +144,7 @@ struct InstalledRow: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 expiryLine
+                scheduledRenewalLine
             }
 
             Spacer()
@@ -178,6 +179,27 @@ struct InstalledRow: View {
                 }
             }
             .font(.caption)
+        }
+    }
+
+    /// When the scheduler will auto-renew: expiry minus the server's refresh_before_days.
+    @ViewBuilder
+    private var scheduledRenewalLine: some View {
+        if let exp = inst.expiryDate {
+            let before = state.status?.refreshBeforeDays ?? 1
+            let renewAt = Calendar.current.date(byAdding: .day, value: -before, to: exp) ?? exp
+            HStack(spacing: 6) {
+                Image(systemName: "calendar.badge.clock")
+                if renewAt <= Date() {
+                    Text(state.t("Obnova naplánovaná: co nejdřív (kontrola každou hodinu)",
+                                 "Renewal scheduled: as soon as possible (checked hourly)"))
+                } else {
+                    Text(state.t("Obnova naplánovaná: \(dateStr(renewAt))",
+                                 "Renewal scheduled: \(dateStr(renewAt))"))
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
         }
     }
 

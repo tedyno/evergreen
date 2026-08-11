@@ -59,6 +59,20 @@ async fn tick(st: &AppState) -> anyhow::Result<()> {
             continue;
         }
 
+        // USB works even when the iPad is locked; over Wi-Fi, iOS refuses to install on a
+        // locked device — so only proceed wirelessly once we can confirm it's unlocked.
+        // Otherwise skip quietly and retry next hour: it renews the next time the iPad is
+        // unlocked (which, within the 7-day window, always happens in normal use).
+        if !crate::device::has_usb(&device).await
+            && crate::device::is_locked(&device).await != Some(false)
+        {
+            tracing::debug!(
+                "refresh: iPad {} zamčený (jen Wi-Fi), obnovím po odemčení",
+                inst.device_udid
+            );
+            continue;
+        }
+
         tracing::info!(
             "refresh: instalace {} vyprší {:?} — zařazuji resign",
             inst.id, inst.profile_expires
