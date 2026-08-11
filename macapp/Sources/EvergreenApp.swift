@@ -24,6 +24,9 @@ struct EvergreenApp: App {
                     appDelegate.server = server
                     await bootstrap()
                 }
+                // Window open → show in the Dock; closed → menu-bar only (stays running).
+                .onAppear { NSApp.setActivationPolicy(.regular) }
+                .onDisappear { NSApp.setActivationPolicy(.accessory) }
         }
         .windowStyle(.titleBar)
         .commands {
@@ -90,6 +93,7 @@ struct MenuBarContent: View {
             }
         }
         Button(state.t("Otevřít Evergreen", "Open Evergreen")) {
+            NSApp.setActivationPolicy(.regular)
             openWindow(id: "main")
             NSApp.activate(ignoringOtherApps: true)
         }
