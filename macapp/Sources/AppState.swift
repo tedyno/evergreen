@@ -43,6 +43,10 @@ final class AppState: ObservableObject {
     private(set) var client: ApiClient
 
     private var pollTask: Task<Void, Never>?
+    // Baselines for change detection → notifications.
+    private var lastJobStatus: [Int64: String] = [:]
+    private var lastAuthState: String?
+    private var notificationsPrimed = false
 
     init() {
         let url = URL(string: "http://127.0.0.1:8080")!
@@ -88,6 +92,25 @@ final class AppState: ObservableObject {
 
     /// Is any job running? (for the loading indicator in the menu)
     var hasActiveJob: Bool { jobs.contains { $0.isActive } }
+
+    // MARK: - health summary (dashboard + menu bar)
+
+    /// Installed apps currently being kept alive.
+    var activeInstallations: [Installation] { installations.filter { $0.isActive } }
+
+    /// Fewest whole days until any app's profile expires (nil if unknown / none).
+    var soonestExpiryDays: Int? { activeInstallations.compactMap { $0.daysUntilExpiry }.min() }
+
+    /// Things needing attention: an expired app, a stuck login, or the server being down.
+    var issueCount: Int {
+        var n = 0
+        if status == nil { n += 1 }
+        if let a = account?.authState, a != "logged_in" { n += 1 }
+        n += activeInstallations.filter { ($0.daysUntilExpiry ?? 99) <= 0 }.count
+        return n
+    }
+
+    var isHealthy: Bool { issueCount == 0 }
 
     func cancelJob(_ id: Int64) async {
         try? await client.cancelJob(id: id)
@@ -180,6 +203,14 @@ final class AppState: ObservableObject {
         await refreshJobs()
     }
 
+    /// Re-signs and reinstalls every active app now (enqueues one job each).
+    func refreshAllApps() async {
+        for inst in activeInstallations {
+            _ = try? await client.install(deviceUdid: inst.deviceUdid, ipaId: inst.ipaId)
+        }
+        await refreshJobs()
+    }
+
     func login(appleId: String, password: String) async throws -> AuthOutcome {
         let outcome = try await client.login(appleId: appleId, password: password)
         await refreshAccount()
@@ -199,15 +230,53 @@ final class AppState: ObservableObject {
 
     // MARK: - polling
 
-    /// Starts periodic job loading (runs for the lifetime of the app).
+    /// Starts periodic loading (runs for the lifetime of the app). Jobs every 2 s;
+    /// account/installations less often; then checks for anything worth a notification.
     func startPolling() {
         guard pollTask == nil else { return }
         pollTask = Task { [weak self] in
+            var tick = 0
             while !Task.isCancelled {
                 await self?.refreshJobs()
+                if tick % 3 == 0 {
+                    await self?.refreshInstallations()
+                    await self?.refreshAccount()
+                }
+                await self?.checkForNotifications()
+                tick += 1
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
         }
+    }
+
+    /// Diffs against the previous poll and posts notifications for new problems /
+    /// finished automatic renewals. The first pass only records baselines (no spam).
+    private func checkForNotifications() {
+        let primed = notificationsPrimed
+
+        // Login needs the user (e.g. 2FA) — surface it once on transition.
+        if primed, let a = account?.authState, a != "logged_in", a != lastAuthState {
+            NotificationManager.shared.post(
+                title: t("Evergreen: přihlášení", "Evergreen: sign-in"),
+                body: t("Apple ID vyžaduje ověření — otevři Účet a přihlas se.",
+                        "Your Apple ID needs verification — open Account and sign in."))
+        }
+        lastAuthState = account?.authState
+
+        for job in jobs {
+            let prev = lastJobStatus[job.id]
+            if primed, job.status == "error", prev != "error" {
+                NotificationManager.shared.post(
+                    title: t("Evergreen: úloha selhala", "Evergreen: job failed"),
+                    body: job.message ?? t("Podpis/instalace se nezdařila.", "Signing/install failed."))
+            } else if primed, job.status == "done", prev != "done", job.kind == "refresh" {
+                NotificationManager.shared.post(
+                    title: t("Evergreen: appka obnovena", "Evergreen: app renewed"),
+                    body: job.message ?? t("Profil byl obnoven před vypršením.", "The profile was renewed before expiring."))
+            }
+            lastJobStatus[job.id] = job.status
+        }
+        notificationsPrimed = true
     }
 
     func stopPolling() {

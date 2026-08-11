@@ -53,6 +53,7 @@ struct EvergreenApp: App {
 
     /// Depending on the mode, either starts the embedded server or connects to a remote one.
     private func bootstrap() async {
+        NotificationManager.shared.requestAuthorization()
         if state.useLocalServer {
             await server.startIfNeeded()
             await state.activate(baseURL: server.localBaseURL)
@@ -63,7 +64,7 @@ struct EvergreenApp: App {
     }
 }
 
-/// Menu bar dropdown: status + basic actions.
+/// Menu bar dropdown: status, health summary + actions.
 struct MenuBarContent: View {
     @EnvironmentObject var state: AppState
 
@@ -73,16 +74,36 @@ struct MenuBarContent: View {
         } else {
             Text(state.t("Nepřipojeno", "Not connected"))
         }
+        if !state.activeInstallations.isEmpty {
+            Text(healthLine)
+        }
         if state.hasActiveJob {
             Text(state.t("Probíhá úloha…", "A job is running…"))
         }
         Divider()
+        if !state.activeInstallations.isEmpty {
+            Button(state.t("Obnovit vše", "Refresh all")) {
+                Task { await state.refreshAllApps() }
+            }
+        }
         Button(state.t("Otevřít Evergreen", "Open Evergreen")) {
             NSApp.activate(ignoringOtherApps: true)
         }
         Button(state.t("Ukončit", "Quit")) {
             NSApplication.shared.terminate(nil)
         }
+    }
+
+    /// One-line health summary for the menu bar.
+    private var healthLine: String {
+        let n = state.activeInstallations.count
+        if state.issueCount > 0 {
+            return state.t("⚠︎ \(state.issueCount) vyžaduje pozornost", "⚠︎ \(state.issueCount) need attention")
+        }
+        if let d = state.soonestExpiryDays {
+            return state.t("\(n) naživu · nejbližší za \(d) d", "\(n) alive · soonest in \(d)d")
+        }
+        return state.t("\(n) naživu", "\(n) alive")
     }
 }
 

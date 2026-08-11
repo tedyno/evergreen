@@ -1,8 +1,8 @@
 import SwiftUI
 
 enum Section: String, CaseIterable, Identifiable {
+    case overview = "Přehled"
     case apps = "Aplikace"
-    case installed = "Nainstalované"
     case devices = "Zařízení"
     case jobs = "Úlohy"
     case account = "Účet"
@@ -11,8 +11,8 @@ enum Section: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
+        case .overview: return "house"
         case .apps: return "square.grid.2x2"
-        case .installed: return "checkmark.seal"
         case .devices: return "ipad.and.iphone"
         case .jobs: return "list.bullet.rectangle"
         case .account: return "person.crop.circle"
@@ -23,8 +23,8 @@ enum Section: String, CaseIterable, Identifiable {
     @MainActor
     func title(_ s: AppState) -> String {
         switch self {
+        case .overview: return s.t("Přehled", "Overview")
         case .apps: return s.t("Aplikace", "Apps")
-        case .installed: return s.t("Nainstalované", "Installed")
         case .devices: return s.t("Zařízení", "Devices")
         case .jobs: return s.t("Úlohy", "Jobs")
         case .account: return s.t("Účet", "Account")
@@ -34,7 +34,7 @@ enum Section: String, CaseIterable, Identifiable {
 
 struct ContentView: View {
     @EnvironmentObject var state: AppState
-    @State private var selection: Section? = .apps
+    @State private var selection: Section? = .overview
 
     var body: some View {
         NavigationSplitView {
@@ -53,9 +53,9 @@ struct ContentView: View {
                 ConnectionStatusBar()
             }
         } detail: {
-            switch selection ?? .apps {
+            switch selection ?? .overview {
+            case .overview: OverviewView()
             case .apps: AppsView()
-            case .installed: InstalledView()
             case .devices: DevicesView()
             case .jobs: JobsView()
             case .account: AccountView()
