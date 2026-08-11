@@ -64,13 +64,15 @@ async fn main() -> anyhow::Result<()> {
 
 /// Loads the stored Apple ID session from the DB and restores the login (no password/2FA).
 async fn restore_account_session(state: &AppState) -> anyhow::Result<()> {
-    let row: Option<(String, Option<String>)> =
-        sqlx::query_as("SELECT apple_id, session_enc FROM account WHERE id = 1")
+    let row: Option<(String, Option<String>, String)> =
+        sqlx::query_as("SELECT apple_id, session_enc, password_enc FROM account WHERE id = 1")
             .fetch_optional(&state.db)
             .await?;
-    if let Some((apple_id, Some(enc))) = row {
+    if let Some((apple_id, Some(enc), pw_enc)) = row {
         let xml = crypto::decrypt(&state.cfg.master_key, &enc)?;
-        state.apple.restore_session(apple_id, &xml).await?;
+        // The password rides along so `xcode_auth` can refresh a stale session by itself.
+        let password = crypto::decrypt(&state.cfg.master_key, &pw_enc)?;
+        state.apple.restore_session(apple_id, password, &xml).await?;
         tracing::info!("Apple ID session obnovena z disku");
     }
     Ok(())

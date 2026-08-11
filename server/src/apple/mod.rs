@@ -51,6 +51,17 @@ impl XcodeAuth {
     }
 }
 
+/// Marker error: Apple rejected an app-token request with -22411 because the stored
+/// session is no longer valid. Used so callers can trigger a re-login and retry.
+#[derive(Debug)]
+struct StaleSession;
+impl std::fmt::Display for StaleSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Apple session vypršela (GSA -22411)")
+    }
+}
+impl std::error::Error for StaleSession {}
+
 /// Result of a login attempt.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(tag = "state")]
@@ -202,7 +213,12 @@ impl AppleClient {
     }
 
     /// Restores the login from a stored session (after a server restart), without password/2FA.
-    pub async fn restore_session(&self, apple_id: String, session_xml: &str) -> anyhow::Result<()> {
+    pub async fn restore_session(
+        &self,
+        apple_id: String,
+        password: String,
+        session_xml: &str,
+    ) -> anyhow::Result<()> {
         let spd: plist::Dictionary = plist::from_bytes(session_xml.as_bytes())
             .map_err(|e| anyhow::anyhow!("parse session: {e}"))?;
         let mut account = AppleAccount::new(self.anisette_config())
@@ -212,6 +228,8 @@ impl AppleClient {
 
         let mut inner = self.inner.lock().await;
         inner.apple_id = Some(apple_id);
+        // Keep the password so a stale session can be refreshed automatically (-22411).
+        inner.password = Some(password);
         inner.account = Some(account);
         inner.logged_in = true;
         Ok(())
@@ -234,7 +252,39 @@ impl AppleClient {
 
     /// Auth material for Developer Services: DSID + Xcode token + anisette headers.
     /// The token is cached (valid ~a year) so Apple doesn't throttle repeated GSA requests.
+    /// Gets Developer Services auth material, transparently re-logging in once if the
+    /// stored session has gone stale (Apple answers app-token requests with -22411).
     pub async fn xcode_auth(&self) -> anyhow::Result<XcodeAuth> {
+        match self.xcode_auth_once().await {
+            Err(e) if e.downcast_ref::<StaleSession>().is_some() => {
+                tracing::warn!("GSA session vypršela (-22411) — zkouším automatický re-login");
+                self.reauth().await?;
+                self.xcode_auth_once().await
+            }
+            other => other,
+        }
+    }
+
+    /// Re-logs in with the stored credentials to refresh a stale session. Fails if the
+    /// password isn't in memory or Apple demands a fresh 2FA (then the user must log in).
+    async fn reauth(&self) -> anyhow::Result<()> {
+        let (apple_id, password) = {
+            let inner = self.inner.lock().await;
+            match (inner.apple_id.clone(), inner.password.clone()) {
+                (Some(a), Some(p)) => (a, p),
+                _ => anyhow::bail!("automatický re-login nelze — přihlas se prosím znovu ručně"),
+            }
+        };
+        match self.login(&apple_id, &password).await? {
+            LoginOutcome::LoggedIn { .. } => Ok(()),
+            LoginOutcome::Needs2FA => {
+                anyhow::bail!("re-login vyžaduje 2FA — potvrď kód v Účtu a přihlas se znovu")
+            }
+        }
+    }
+
+    /// One attempt to obtain the Xcode auth token (wrapped by `xcode_auth` for reauth).
+    async fn xcode_auth_once(&self) -> anyhow::Result<XcodeAuth> {
         let mut inner = self.inner.lock().await;
         let account = inner
             .account
@@ -261,10 +311,15 @@ impl AppleClient {
         }
 
         let account = inner.account.as_ref().unwrap();
-        let token = account
-            .get_app_token("com.apple.gs.xcode.auth")
-            .await
-            .map_err(|e| anyhow::anyhow!("app token: {e:?}"))?;
+        let token = match account.get_app_token("com.apple.gs.xcode.auth").await {
+            Ok(t) => t,
+            // -22411 = the restored session is no longer valid for app-token requests;
+            // surface it as a typed marker so `xcode_auth` can re-login and retry.
+            Err(icloud_auth::Error::AuthSrpWithMessage(-22411, _)) => {
+                return Err(StaleSession.into())
+            }
+            Err(e) => return Err(anyhow::anyhow!("app token: {e:?}")),
+        };
         let et = token.app_tokens.get("et").and_then(|v| v.as_data())
             .ok_or_else(|| anyhow::anyhow!("chybí et"))?;
         let sk = token.app_tokens.get("sk").and_then(|v| v.as_data())
