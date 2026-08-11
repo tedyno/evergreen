@@ -130,9 +130,13 @@ struct FreeAccountCard: View {
                     ProgressView().controlSize(.small)
                 } else {
                     if let info = state.appIdInfo {
-                        Text("\(info.count)/\(info.max)")
-                            .font(.title3.monospacedDigit())
-                            .foregroundStyle(info.count >= info.max ? .red : .primary)
+                        if info.isPaid {
+                            Text("\(info.count)").font(.title3.monospacedDigit())
+                        } else {
+                            Text("\(info.count)/\(info.max)")
+                                .font(.title3.monospacedDigit())
+                                .foregroundStyle(info.count >= info.max ? .red : .primary)
+                        }
                     }
                     Button {
                         Task { await state.refreshAppIds(force: true) }
@@ -146,15 +150,23 @@ struct FreeAccountCard: View {
             }
 
             if let info = state.appIdInfo {
-                HStack(spacing: 4) {
-                    ForEach(0..<info.max, id: \.self) { i in
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(i < info.count ? Color.accentColor : Color.secondary.opacity(0.2))
-                            .frame(height: 7)
+                if info.isPaid {
+                    Label(state.t("Placený Apple Developer účet", "Paid Apple Developer account"),
+                          systemImage: "checkmark.seal.fill")
+                        .font(.caption).foregroundStyle(.green)
+                    Text(state.t("Bez limitu App ID, profily platí ~1 rok — obnova stačí ~jednou ročně. Team \(info.teamId).", "No App ID limit, ~1-year profiles — renews about once a year. Team \(info.teamId)."))
+                        .font(.caption2).foregroundStyle(.secondary)
+                } else {
+                    HStack(spacing: 4) {
+                        ForEach(0..<info.max, id: \.self) { i in
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(i < info.count ? Color.accentColor : Color.secondary.opacity(0.2))
+                                .frame(height: 7)
+                        }
                     }
+                    Text(state.t("Skutečný stav účtu (i App ID z AltStoru/Xcode). Free limit: 10 App ID / 7 dní, 3 aktivní appky na zařízení, profil 7 dní. Team \(info.teamId).", "Actual account state (including App IDs from AltStore/Xcode). Free limit: 10 App IDs / 7 days, 3 active apps per device, 7-day profile. Team \(info.teamId)."))
+                        .font(.caption2).foregroundStyle(.secondary)
                 }
-                Text(state.t("Skutečný stav účtu (i App ID z AltStoru/Xcode). Free limit: 10 App ID / 7 dní, 3 aktivní appky na zařízení, profil 7 dní. Team \(info.teamId).", "Actual account state (including App IDs from AltStore/Xcode). Free limit: 10 App IDs / 7 days, 3 active apps per device, 7-day profile. Team \(info.teamId)."))
-                    .font(.caption2).foregroundStyle(.secondary)
 
                 if !info.appIds.isEmpty {
                     Divider()

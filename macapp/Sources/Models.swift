@@ -167,13 +167,17 @@ struct AppIdInfo: Decodable {
     let teamId: String
     let count: Int
     let max: Int
+    /// True for a paid Apple Developer Program account (no App ID limit, 1-year profiles).
+    let paid: Bool?
     let appIds: [AppIdEntry]
 
     enum CodingKeys: String, CodingKey {
         case teamId = "team_id"
-        case count, max
+        case count, max, paid
         case appIds = "app_ids"
     }
+
+    var isPaid: Bool { paid ?? false }
 }
 
 /// Response to login / 2FA.

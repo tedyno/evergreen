@@ -198,11 +198,13 @@ pub async fn debug_install_direct(
 
 /// Overview of the account's App IDs from Developer Services (global — including AltStore/Xcode).
 pub async fn account_appids(State(st): State<AppState>) -> AppResult<Json<Value>> {
-    let (team_id, ids) = st.apple.account_app_ids().await.map_err(AppError::Other)?;
+    let (team_id, is_free, ids) = st.apple.account_app_ids().await.map_err(AppError::Other)?;
     Ok(Json(json!({
         "team_id": team_id,
         "count": ids.len(),
-        "max": 10,
+        // Free accounts cap at 10 App IDs / 7 days; paid ones have no practical limit.
+        "max": if is_free { 10 } else { 0 },
+        "paid": !is_free,
         "app_ids": ids,
     })))
 }

@@ -86,8 +86,10 @@ async fn request(
     Ok(dict)
 }
 
-/// Returns the teamId of the first team (a free account typically has one).
-pub async fn first_team_id(auth: &XcodeAuth) -> Result<String> {
+/// Returns (teamId, is_free) for the first team. Free = Xcode free provisioning
+/// (7-day profiles, App ID limits); otherwise a paid Apple Developer Program account
+/// (1-year profiles, no App ID limits).
+pub async fn team_and_type(auth: &XcodeAuth) -> Result<(String, bool)> {
     let resp = request(auth, "listTeams.action", &[], plist::Dictionary::new()).await?;
     let teams = resp
         .get("teams")
@@ -96,8 +98,32 @@ pub async fn first_team_id(auth: &XcodeAuth) -> Result<String> {
     let first = teams.first().and_then(|v| v.as_dictionary())
         .ok_or_else(|| anyhow!("žádný tým na účtu"))?;
     let team_id = first.get("teamId").and_then(|v| v.as_string())
-        .ok_or_else(|| anyhow!("tým nemá teamId"))?;
-    Ok(team_id.to_string())
+        .ok_or_else(|| anyhow!("tým nemá teamId"))?
+        .to_string();
+    Ok((team_id, detect_free(first)))
+}
+
+/// A free (Xcode-free-provisioning) account vs a paid Apple Developer Program one.
+/// A free account's only membership is "Xcode Free Provisioning Program" (product `fp22`);
+/// a paid account carries a real program membership with a different product id.
+fn detect_free(team: &plist::Dictionary) -> bool {
+    let Some(memberships) = team.get("memberships").and_then(|v| v.as_array()) else {
+        return true; // no membership info → assume free (conservative limits)
+    };
+    // Paid if any membership is something other than the free-provisioning one.
+    let has_paid = memberships.iter().any(|m| {
+        let product = m
+            .as_dictionary()
+            .and_then(|d| d.get("membershipProductId"))
+            .and_then(|v| v.as_string());
+        matches!(product, Some(p) if p != "fp22")
+    });
+    !has_paid
+}
+
+/// Returns the teamId of the first team.
+pub async fn first_team_id(auth: &XcodeAuth) -> Result<String> {
+    Ok(team_and_type(auth).await?.0)
 }
 
 /// List of App IDs on the account (global — including ones created by AltStore etc.).
@@ -125,11 +151,11 @@ pub async fn list_app_ids(auth: &XcodeAuth, team_id: &str) -> Result<Vec<AppIdEn
     Ok(out)
 }
 
-/// Complete overview of the account's App IDs (teamId + list) — for the app.
-pub async fn account_app_ids(auth: &XcodeAuth) -> Result<(String, Vec<AppIdEntry>)> {
-    let team = first_team_id(auth).await?;
+/// Complete overview of the account's App IDs (teamId + account type + list) — for the app.
+pub async fn account_app_ids(auth: &XcodeAuth) -> Result<(String, bool, Vec<AppIdEntry>)> {
+    let (team, is_free) = team_and_type(auth).await?;
     let ids = list_app_ids(auth, &team).await?;
-    Ok((team, ids))
+    Ok((team, is_free, ids))
 }
 
 // ------------------------------------------------------------- devices

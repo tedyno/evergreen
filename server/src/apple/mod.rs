@@ -346,10 +346,10 @@ impl AppleClient {
         Ok(XcodeAuth { dsid, token: xcode_token, anisette })
     }
 
-    /// Overview of the account's App IDs (teamId + global list) via Developer Services.
+    /// Overview of the account's App IDs (teamId + account type + global list).
     pub async fn account_app_ids(
         &self,
-    ) -> anyhow::Result<(String, Vec<devportal::AppIdEntry>)> {
+    ) -> anyhow::Result<(String, bool, Vec<devportal::AppIdEntry>)> {
         let auth = self.xcode_auth().await?;
         devportal::account_app_ids(&auth).await
     }
