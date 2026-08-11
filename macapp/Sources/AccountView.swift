@@ -141,7 +141,7 @@ struct SettingsView: View {
                             await server.startIfNeeded()
                             await state.activate(baseURL: server.localBaseURL)
                         } else {
-                            server.uninstallAgent()
+                            await server.uninstallAgent()
                             await state.switchToRemote()
                         }
                     }

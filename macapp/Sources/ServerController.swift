@@ -74,13 +74,22 @@ final class ServerController: ObservableObject {
         }
         state = .starting
 
-        do {
-            try writeAgentPlist(binaryPath: binary.path)
-        } catch {
-            state = .failed("Nelze zapsat LaunchAgent: \(error.localizedDescription)")
+        // The launchctl calls block until each subprocess exits, so run the whole
+        // install-and-load off the main thread — otherwise the UI beachballs at launch.
+        let binaryPath = binary.path
+        let port = self.port
+        let dataDir = Self.appSupportDir().path
+        let logPath = logURL.path
+        let plistURL = Self.agentPlistURL
+        let label = Self.agentLabel
+        let ok = await Task.detached(priority: .userInitiated) {
+            Self.writeAndLoadAgent(binaryPath: binaryPath, port: port, dataDir: dataDir,
+                                   logPath: logPath, plistURL: plistURL, label: label)
+        }.value
+        guard ok else {
+            state = .failed("Nepodařilo se nainstalovat LaunchAgent")
             return
         }
-        loadAgent()
 
         if await waitForHealth(timeout: 15) {
             state = .running
@@ -89,43 +98,49 @@ final class ServerController: ObservableObject {
         }
     }
 
-    /// Writes the LaunchAgent plist pointing at the bundled binary.
-    private func writeAgentPlist(binaryPath: String) throws {
+    /// Writes the LaunchAgent plist and (re)loads it via launchctl. Blocking — always
+    /// call off the main thread. Returns false only if the plist can't be written.
+    nonisolated private static func writeAndLoadAgent(
+        binaryPath: String, port: Int, dataDir: String,
+        logPath: String, plistURL: URL, label: String
+    ) -> Bool {
         let plist: [String: Any] = [
-            "Label": Self.agentLabel,
+            "Label": label,
             "ProgramArguments": [binaryPath],
             "EnvironmentVariables": [
-                "EVERGREEN_DATA": Self.appSupportDir().path,
+                "EVERGREEN_DATA": dataDir,
                 "EVERGREEN_BIND": "127.0.0.1:\(port)",
                 "RUST_LOG": "info",
                 // No ANISETTE_URL — on macOS the native AOSKit provider wins.
             ],
             "RunAtLoad": true,
             "KeepAlive": true,
-            "StandardOutPath": logURL.path,
-            "StandardErrorPath": logURL.path,
+            "StandardOutPath": logPath,
+            "StandardErrorPath": logPath,
             "ProcessType": "Background",
         ]
-        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
-        try data.write(to: Self.agentPlistURL)
-    }
+        guard let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0),
+              (try? data.write(to: plistURL)) != nil else { return false }
 
-    /// (Re)loads the agent so it picks up the current plist.
-    private func loadAgent() {
         let domain = "gui/\(getuid())"
-        let target = "\(domain)/\(Self.agentLabel)"
+        let target = "\(domain)/\(label)"
         // Boot out any previous instance so bootstrap can re-read the plist.
-        _ = Self.runLaunchctl(["bootout", target])
-        _ = Self.runLaunchctl(["bootstrap", domain, Self.agentPlistURL.path])
-        _ = Self.runLaunchctl(["enable", target])
-        _ = Self.runLaunchctl(["kickstart", "-k", target])
+        _ = runLaunchctl(["bootout", target])
+        _ = runLaunchctl(["bootstrap", domain, plistURL.path])
+        _ = runLaunchctl(["enable", target])
+        _ = runLaunchctl(["kickstart", "-k", target])
+        return true
     }
 
     /// Stops and removes the background agent entirely (used by the Settings toggle and
-    /// mirrored by the Homebrew Cask uninstall).
-    func uninstallAgent() {
-        _ = Self.runLaunchctl(["bootout", "gui/\(getuid())/\(Self.agentLabel)"])
-        try? FileManager.default.removeItem(at: Self.agentPlistURL)
+    /// mirrored by the Homebrew Cask uninstall). Blocking launchctl runs off the main thread.
+    func uninstallAgent() async {
+        let plistURL = Self.agentPlistURL
+        let label = Self.agentLabel
+        await Task.detached(priority: .userInitiated) {
+            _ = ServerController.runLaunchctl(["bootout", "gui/\(getuid())/\(label)"])
+            try? FileManager.default.removeItem(at: plistURL)
+        }.value
         state = .stopped
     }
 
@@ -134,7 +149,7 @@ final class ServerController: ObservableObject {
     func stop() {}
 
     @discardableResult
-    private static func runLaunchctl(_ args: [String]) -> Int32 {
+    nonisolated private static func runLaunchctl(_ args: [String]) -> Int32 {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         p.arguments = args

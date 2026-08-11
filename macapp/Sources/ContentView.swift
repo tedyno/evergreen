@@ -34,9 +34,41 @@ enum Section: String, CaseIterable, Identifiable {
 
 struct ContentView: View {
     @EnvironmentObject var state: AppState
+    @EnvironmentObject var server: ServerController
     @State private var selection: Section? = .overview
 
     var body: some View {
+        if state.initialLoadDone {
+            splitView
+        } else {
+            loadingScreen
+        }
+    }
+
+    /// Shown while the server is coming up and the first data load runs — avoids briefly
+    /// flashing "not connected" / "not logged in" before we actually know the state.
+    private var loadingScreen: some View {
+        VStack(spacing: 16) {
+            ProgressView().controlSize(.large)
+            Text(loadingMessage)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .frame(minWidth: 760, minHeight: 500)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .navigationTitle("Evergreen")
+    }
+
+    private var loadingMessage: String {
+        switch server.state {
+        case .starting: return state.t("Spouštím server…", "Starting server…")
+        case .failed(let m): return state.t("Chyba serveru: \(m)", "Server error: \(m)")
+        default: return state.t("Načítám…", "Loading…")
+        }
+    }
+
+    private var splitView: some View {
         NavigationSplitView {
             List(Section.allCases, selection: $selection) { section in
                 HStack {

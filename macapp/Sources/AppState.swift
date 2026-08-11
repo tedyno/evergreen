@@ -40,6 +40,10 @@ final class AppState: ObservableObject {
     @Published var connectionError: String?
     @Published var uploadProgress: Double?
 
+    /// False until the first full load finishes — the UI shows a loading screen until then,
+    /// so we don't briefly flash "not logged in" / empty states while data is still coming in.
+    @Published var initialLoadDone = false
+
     private(set) var client: ApiClient
 
     private var pollTask: Task<Void, Never>?
@@ -66,6 +70,7 @@ final class AppState: ObservableObject {
         activeBaseURL = url
         await client.setBaseURL(url)
         await refreshAll()
+        initialLoadDone = true
     }
 
     /// Switches to the remote server using the stored address.
