@@ -7,8 +7,6 @@ cask "evergreen" do
   desc "Self-hosted sideloading that keeps sideloaded iOS apps alive"
   homepage "https://github.com/tedyno/evergreen"
 
-  depends_on macos: ">= :ventura"
-
   app "Evergreen.app"
 
   # Evergreen installs a per-user LaunchAgent (com.evergreen.server) so the engine and

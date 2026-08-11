@@ -36,7 +36,9 @@ Evergreen is **not notarized** (no paid Apple Developer account), so macOS Gatek
 **Homebrew:**
 
 ```sh
-brew install --cask https://raw.githubusercontent.com/tedyno/evergreen/main/packaging/Casks/evergreen.rb
+brew tap tedyno/evergreen
+brew trust tedyno/evergreen   # Homebrew requires explicit trust for third-party taps
+brew install --cask evergreen
 ```
 
 **Manual:** download `Evergreen-<version>.zip` from [Releases](https://github.com/tedyno/evergreen/releases), unzip, drag `Evergreen.app` into `/Applications`.
