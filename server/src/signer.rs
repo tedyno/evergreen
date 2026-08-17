@@ -53,8 +53,16 @@ pub async fn resign(st: &AppState, ipa: &Ipa, device: &Device) -> anyhow::Result
             tokio::task::spawn_blocking(move || extract_embedded_profile(&cb)).await?
         {
             let expires = parse_profile_expiration(&profile);
-            let still_valid = expires.map(|e| e > Utc::now()).unwrap_or(false);
-            if still_valid {
+            let now = Utc::now();
+            // Reuse the cached build only if its profile comfortably outlives the refresh
+            // window. If it's expiring soon, reusing it wouldn't actually renew anything —
+            // the expiry stays the same and the scheduler keeps asking — so fetch a fresh
+            // profile online instead. Fall back to the still-valid cache only when we can't
+            // reach Apple (not logged in), so the app at least stays alive a bit longer.
+            let margin = chrono::Duration::days(st.cfg.refresh_before_days.max(1));
+            let comfortable = expires.map(|e| e > now + margin).unwrap_or(false);
+            let still_valid = expires.map(|e| e > now).unwrap_or(false);
+            if comfortable || (still_valid && !st.apple.is_logged_in().await) {
                 let meta = tokio::task::spawn_blocking(move || crate::ipa::parse_meta(&cbytes)).await?;
                 let bid = meta.map(|m| m.bundle_id).unwrap_or_else(|_| ipa.bundle_id.clone());
                 tracing::info!("reuse podepsaného buildu {} (bez auth)", ipa.name);

@@ -79,10 +79,13 @@ async fn try_offline_resign(st: &AppState, ipa: &Ipa) -> Result<Option<SignedIpa
     }
 
     let profile = tokio::fs::read(&profile_path).await?;
-    // Profile validity.
+    // Only reuse the stored profile if it comfortably outlives the refresh window. If it's
+    // expiring soon, reusing it wouldn't actually renew — we're logged in here, so fall
+    // through to the online path for a fresh profile.
     let expires = crate::signer::parse_profile_expiration_pub(&profile);
-    if expires.map(|e| e <= chrono::Utc::now()).unwrap_or(true) {
-        tracing::info!("offline profil vypršel/neznámý — použiju online cestu");
+    let margin = chrono::Duration::days(st.cfg.refresh_before_days.max(1));
+    if expires.map(|e| e <= chrono::Utc::now() + margin).unwrap_or(true) {
+        tracing::info!("offline profil brzy vyprší/neznámý — použiju online cestu");
         return Ok(None);
     }
 
